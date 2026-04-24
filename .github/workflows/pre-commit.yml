@@ -1,0 +1,17 @@
+name: pre-commits CI
+
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/antonbabenko/pre-commit-terraform:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mark workspace as safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Run pre-commit hooks
+        run: SKIP=no-commit-to-branch pre-commit run --all-files
