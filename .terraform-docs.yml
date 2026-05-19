@@ -1,0 +1,19 @@
+formatter: "markdown table"
+
+header-from: main.tf
+
+sections:
+  show:
+    - header
+    - providers
+    - resources
+    - inputs
+    - outputs
+
+sort:
+  enabled: true
+  by: name
+
+settings:
+  anchor: true
+  color: true
