@@ -61,3 +61,15 @@ resource "google_bigquery_table" "table" {
 ]
 EOF
 }
+
+# trivy:ignore:GCP-0066
+# trivy:ignore:GCP-0077
+resource "google_storage_bucket" "test_bucket" {
+  name                        = "tokyo-analyst-test-bucket-999"
+  location                    = "EU"
+  uniform_bucket_level_access = true
+
+  versioning {
+    enabled = true
+  }
+}
