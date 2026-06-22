@@ -11,6 +11,7 @@ resource "google_project_service" "services" {
     "bigquery.googleapis.com",
     "storage.googleapis.com",
     "cloudresourcemanager.googleapis.com",
+    "secretmanager.googleapis.com",
   ])
   project = google_project.project.project_id
   service = each.key
@@ -26,6 +27,17 @@ module "bigquery" {
   dataset_id = var.dataset_id
   table_id   = var.table_id
   region     = var.region
+
+  depends_on = [google_project_service.services]
+}
+
+resource "google_secret_manager_secret" "open_weather_map_api_key" {
+  secret_id = "open-weather-map-api-key"
+  project   = google_project.project.project_id
+
+  replication {
+    auto {}
+  }
 
   depends_on = [google_project_service.services]
 }
