@@ -12,6 +12,9 @@ resource "google_project_service" "services" {
     "storage.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "secretmanager.googleapis.com",
+    "cloudfunctions.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "run.googleapis.com",
   ])
   project = google_project.project.project_id
   service = each.key
@@ -38,6 +41,16 @@ resource "google_secret_manager_secret" "open_weather_map_api_key" {
   replication {
     auto {}
   }
+
+  depends_on = [google_project_service.services]
+}
+
+module "cloud_function" {
+  source = "./modules/cloud_function"
+
+  project_id = google_project.project.project_id
+  region     = var.region
+  secret_id  = google_secret_manager_secret.open_weather_map_api_key.secret_id
 
   depends_on = [google_project_service.services]
 }
