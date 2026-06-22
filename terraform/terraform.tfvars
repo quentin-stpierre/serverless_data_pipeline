@@ -7,4 +7,4 @@ folder_id       = "501022756737"
 dataset_id      = "processed_weather_data"
 table_id        = "transformed_weather_data"
 
-URL = "https://api.openweathermap.org/data/2.5/weather?lat=50.8503&lon=4.3517&units=metric&appid={YOUR_API_KEY}"
+# URL = "https://api.openweathermap.org/data/2.5/weather?lat=50.8503&lon=4.3517&units=metric&appid={YOUR_API_KEY}"
