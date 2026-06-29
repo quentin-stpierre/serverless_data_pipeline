@@ -104,10 +104,12 @@ In another terminal, trigger the local function with `curl`:
 curl http://localhost:8080
 ```
 
-You should receive a successful JSON response containing:
-- A unique event `id` (UUID)
-- A UTC `timestamp`
-- A cleaned `payload` dict containing location, temperature, humidity, pressure, description, and the raw OWM response.
+You should receive a successful JSON response containing the flat, structured weather fields:
+- `location`, `country`
+- `temperature_c`, `temperature_f`, `feels_like_c`, `feels_like_f`
+- `humidity`, `pressure`, `wind_speed_mps`
+- `weather_condition`, `weather_description`
+- `timestamp` (UTC)
 
 ---
 
