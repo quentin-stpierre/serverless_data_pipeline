@@ -1,0 +1,23 @@
+main:
+  steps:
+    - fetch_weather_data:
+        call: http.get
+        args:
+          url: ${function_uri}
+          auth:
+            type: OIDC
+        result: function_result
+    - prepare_pubsub_message:
+        assign:
+          - message: $${function_result.body}
+          - encoded_message: $${base64.encode(json.encode(message))}
+    - publish_to_pubsub:
+        call: googleapis.pubsub.v1.projects.topics.publish
+        args:
+          topic: projects/${project_id}/topics/${pubsub_topic_name}
+          body:
+            messages:
+              - data: $${encoded_message}
+        result: publish_result
+    - return_result:
+        return: $${publish_result}

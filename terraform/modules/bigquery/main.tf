@@ -17,7 +17,8 @@ resource "google_bigquery_table" "table" {
   deletion_protection = false
 
   time_partitioning {
-    type = "DAY"
+    type  = "DAY"
+    field = "timestamp"
   }
 
   labels = {
@@ -27,22 +28,76 @@ resource "google_bigquery_table" "table" {
   schema = <<EOF
 [
   {
-    "name": "id",
+    "name": "location",
     "type": "STRING",
-    "mode": "REQUIRED",
-    "description": "Primary key for the record"
+    "mode": "NULLABLE",
+    "description": "Location name (e.g., Brussels)"
+  },
+  {
+    "name": "country",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Two-letter country code"
+  },
+  {
+    "name": "temperature_c",
+    "type": "FLOAT",
+    "mode": "NULLABLE",
+    "description": "Temperature in Celsius"
+  },
+  {
+    "name": "temperature_f",
+    "type": "FLOAT",
+    "mode": "NULLABLE",
+    "description": "Temperature in Fahrenheit"
+  },
+  {
+    "name": "feels_like_c",
+    "type": "FLOAT",
+    "mode": "NULLABLE",
+    "description": "Feels-like temperature in Celsius"
+  },
+  {
+    "name": "feels_like_f",
+    "type": "FLOAT",
+    "mode": "NULLABLE",
+    "description": "Feels-like temperature in Fahrenheit"
+  },
+  {
+    "name": "humidity",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Humidity percentage"
+  },
+  {
+    "name": "pressure",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Atmospheric pressure in hPa"
+  },
+  {
+    "name": "wind_speed_mps",
+    "type": "FLOAT",
+    "mode": "NULLABLE",
+    "description": "Wind speed in meters per second"
+  },
+  {
+    "name": "weather_condition",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Group of weather parameters (Rain, Snow, Clouds, etc.)"
+  },
+  {
+    "name": "weather_description",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Weather condition description"
   },
   {
     "name": "timestamp",
     "type": "TIMESTAMP",
     "mode": "REQUIRED",
-    "description": "Event timestamp"
-  },
-  {
-    "name": "payload",
-    "type": "JSON",
-    "mode": "NULLABLE",
-    "description": "Raw event data"
+    "description": "Event timestamp of the extraction and transformation"
   }
 ]
 EOF
