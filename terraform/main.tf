@@ -17,6 +17,7 @@ resource "google_project_service" "services" {
     "run.googleapis.com",
     "pubsub.googleapis.com",
     "workflows.googleapis.com",
+    "cloudscheduler.googleapis.com",
   ])
   project = google_project.project.project_id
   service = each.key
@@ -61,7 +62,6 @@ module "pubsub" {
   source = "./modules/pubsub"
 
   project_id = google_project.project.project_id
-  region     = var.region
   dataset_id = module.bigquery.dataset_id
   table_id   = module.bigquery.table_id
 
@@ -77,4 +77,14 @@ module "workflows" {
   pubsub_topic_name = module.pubsub.topic_name
 
   depends_on = [google_project_service.services, module.cloud_function, module.pubsub]
+}
+
+module "scheduler" {
+  source = "./modules/scheduler"
+
+  project_id    = google_project.project.project_id
+  region        = var.region
+  workflow_name = module.workflows.workflow_name
+
+  depends_on = [google_project_service.services, module.workflows]
 }

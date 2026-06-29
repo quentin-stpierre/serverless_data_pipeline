@@ -132,7 +132,11 @@ The pipeline uses a flat schema where every field returned by the Cloud Function
 
 Because `use_table_schema` is enabled and `write_metadata` is false, Pub/Sub automatically maps the flat JSON keys in the message directly to the corresponding columns of the BigQuery table.
 
+## Automated Schedule
+The pipeline is automated using **Cloud Scheduler** which is configured to trigger the Cloud Workflow every day at **9:00 AM Europe/Brussels** timezone.
+The Cloud Scheduler job runs with a dedicated service account having `roles/workflows.invoker` permission to securely invoke the Workflows Execution API.
+
 ---
 
 ## Future Enhancements
-- **Scheduled Triggering:** Incorporate Cloud Scheduler to trigger the Cloud Workflow automatically every hour.
+- **Monitoring & Alerts:** Implement Cloud Monitoring alerts to notify the team if any workflow execution fails or if the scheduler job experiences issues.
