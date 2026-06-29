@@ -15,6 +15,8 @@ resource "google_project_service" "services" {
     "cloudfunctions.googleapis.com",
     "cloudbuild.googleapis.com",
     "run.googleapis.com",
+    "pubsub.googleapis.com",
+    "workflows.googleapis.com",
   ])
   project = google_project.project.project_id
   service = each.key
@@ -53,4 +55,26 @@ module "cloud_function" {
   secret_id  = google_secret_manager_secret.open_weather_map_api_key.secret_id
 
   depends_on = [google_project_service.services]
+}
+
+module "pubsub" {
+  source = "./modules/pubsub"
+
+  project_id = google_project.project.project_id
+  region     = var.region
+  dataset_id = module.bigquery.dataset_id
+  table_id   = module.bigquery.table_id
+
+  depends_on = [google_project_service.services, module.bigquery]
+}
+
+module "workflows" {
+  source = "./modules/workflows"
+
+  project_id        = google_project.project.project_id
+  region            = var.region
+  function_uri      = module.cloud_function.function_uri
+  pubsub_topic_name = module.pubsub.topic_name
+
+  depends_on = [google_project_service.services, module.cloud_function, module.pubsub]
 }

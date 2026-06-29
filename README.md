@@ -8,9 +8,11 @@ The infrastructure is entirely provisioned using infrastructure-as-code with **T
 
 ## Architecture Overview
 
-1. **Extraction & Transformation:** An HTTP-triggered Python Cloud Function is called to run the pipeline.
-2. **Secret Management:** The Cloud Function securely retrieves the OpenWeatherMap API key from GCP **Secret Manager** on the fly, eliminating hardcoded credentials.
-3. **Data Ingestion (Future Scope):** The transformed data is structured and ready to be streamed into a **BigQuery** analytical table (`processed_weather_data.transformed_weather_data`).
+1. **Orchestration:** **Cloud Workflows** coordinates the pipeline execution by triggering the Cloud Function and forwarding the result to Pub/Sub.
+2. **Extraction & Transformation:** An HTTP-triggered Python Cloud Function is called to fetch weather data, perform transformations, and return structured JSON.
+3. **Secret Management:** The Cloud Function securely retrieves the OpenWeatherMap API key from GCP **Secret Manager** on the fly, eliminating hardcoded credentials.
+4. **Data Ingestion:** The workflow formats the transformed payload and publishes it to a **Pub/Sub** topic.
+5. **Storage:** A native **BigQuery Subscription** on the Pub/Sub topic automatically streams the JSON messages directly into a **BigQuery** analytical table (`processed_weather_data.transformed_weather_data`), matching fields automatically.
 
 ---
 
@@ -25,7 +27,9 @@ serverless_data_pipeline/
 ├── terraform/                       # Infrastructure-as-Code (Terraform)
 │   ├── modules/
 │   │   ├── bigquery/                # BigQuery dataset & table module
-│   │   └── cloud_function/          # Package, upload, and deploy Cloud Function Gen 2
+│   │   ├── cloud_function/          # Package, upload, and deploy Cloud Function Gen 2
+│   │   ├── pubsub/                  # Pub/Sub topic & BigQuery native subscription module
+│   │   └── workflows/               # Cloud Workflows orchestration module
 │   ├── main.tf                      # Global entrypoint (project, services, secret container)
 │   ├── providers.tf                 # Terraform provider configuration (Google, Archive)
 │   ├── terraform.tfvars             # Environment variables / values
@@ -113,6 +117,22 @@ You should receive a successful JSON response containing the flat, structured we
 
 ---
 
+## Triggering the Pipeline
+
+Once deployed, you can trigger the pipeline using Cloud Workflows. This will run the Cloud Function, extract/transform the weather data, send it to Pub/Sub, and automatically load it into BigQuery via the native subscription.
+
+To execute the workflow via `gcloud`:
+```bash
+gcloud workflows run weather-data-pipeline --project=serverless-data-pipeline-111 --location=europe-west1
+```
+
+### Automatic Loading to BigQuery
+The Pub/Sub subscription `weather-data-bq` is configured to natively write messages into the BigQuery table `processed_weather_data.transformed_weather_data`.
+The pipeline uses a flat schema where every field returned by the Cloud Function (e.g., `location`, `country`, `temperature_c`, `humidity`, `timestamp`, etc.) maps directly to its corresponding column in BigQuery.
+
+Because `use_table_schema` is enabled and `write_metadata` is false, Pub/Sub automatically maps the flat JSON keys in the message directly to the corresponding columns of the BigQuery table.
+
+---
+
 ## Future Enhancements
-- **Scheduled Triggering:** Incorporate Cloud Scheduler and Cloud Workflows to automate function execution every hour.
-- **Pub/Sub Ingestion:** Pipe the function's transformed payloads to a Pub/Sub topic to decouple ingestion from storage, writing directly into BigQuery.
+- **Scheduled Triggering:** Incorporate Cloud Scheduler to trigger the Cloud Workflow automatically every hour.
