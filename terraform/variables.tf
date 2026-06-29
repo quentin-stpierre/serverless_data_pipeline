@@ -29,11 +29,11 @@ variable "folder_id" {
 }
 
 variable "dataset_id" {
-  description = "The id of the dataset where the processed weather data is stored."
+  description = "The ID of the BigQuery dataset."
   type        = string
 }
 
 variable "table_id" {
-  description = "The id of the table where the processed weather data is stored."
+  description = "The ID of the BigQuery table."
   type        = string
 }
