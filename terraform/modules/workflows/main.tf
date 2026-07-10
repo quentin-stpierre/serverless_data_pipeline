@@ -34,6 +34,7 @@ resource "google_workflows_workflow" "weather_workflow" {
   project         = var.project_id
   description     = "Orchestrates weather data ingestion from Cloud Function to Pub/Sub"
   service_account = google_service_account.workflow_sa.email
+  call_log_level  = "LOG_ALL_CALLS"
 
   source_contents = templatefile("${path.module}/workflow.yaml", {
     function_uri      = var.function_uri
