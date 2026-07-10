@@ -99,3 +99,13 @@ module "monitoring" {
 
   depends_on = [google_project_service.services, module.workflows]
 }
+
+module "cicd" {
+  source = "./modules/cicd"
+
+  project_id   = google_project.project.project_id
+  github_owner = var.github_owner
+  github_repo  = var.github_repo
+
+  depends_on = [google_project_service.services]
+}
