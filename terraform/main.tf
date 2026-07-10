@@ -18,6 +18,7 @@ resource "google_project_service" "services" {
     "pubsub.googleapis.com",
     "workflows.googleapis.com",
     "cloudscheduler.googleapis.com",
+    "monitoring.googleapis.com",
   ])
   project = google_project.project.project_id
   service = each.key
@@ -85,6 +86,16 @@ module "scheduler" {
   project_id    = google_project.project.project_id
   region        = var.region
   workflow_name = module.workflows.workflow_name
+
+  depends_on = [google_project_service.services, module.workflows]
+}
+
+module "monitoring" {
+  source = "./modules/monitoring"
+
+  project_id          = google_project.project.project_id
+  alert_email_address = var.alert_email_address
+  workflow_name       = module.workflows.workflow_name
 
   depends_on = [google_project_service.services, module.workflows]
 }

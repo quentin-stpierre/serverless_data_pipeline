@@ -37,3 +37,8 @@ variable "table_id" {
   description = "The ID of the BigQuery table."
   type        = string
 }
+
+variable "alert_email_address" {
+  description = "The email address to send alert notifications to"
+  type        = string
+}
