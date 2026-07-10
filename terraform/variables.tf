@@ -37,3 +37,18 @@ variable "table_id" {
   description = "The ID of the BigQuery table."
   type        = string
 }
+
+variable "alert_email_address" {
+  description = "The email address to send alert notifications to"
+  type        = string
+}
+
+variable "github_owner" {
+  description = "The owner/organization of the GitHub repository"
+  type        = string
+}
+
+variable "github_repo" {
+  description = "The name of the GitHub repository"
+  type        = string
+}

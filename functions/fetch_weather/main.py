@@ -1,10 +1,21 @@
 import os
 import uuid
 from datetime import datetime
+import logging
 import functions_framework
 import google.auth
 from google.cloud import secretmanager
+import google.cloud.logging
 import requests
+
+# Initialize Google Cloud Logging and integrate with standard Python logging
+try:
+    logging_client = google.cloud.logging.Client()
+    logging_client.setup_logging()
+except Exception as e:
+    # Fallback to standard basic config if running locally without credentials
+    logging.basicConfig(level=logging.INFO)
+    logging.warning(f"Could not set up Cloud Logging, falling back to basic configuration: {e}")
 
 def get_secret(secret_id: str) -> str:
     """Retrieves the secret value from GCP Secret Manager."""
@@ -55,11 +66,11 @@ def fetch_weather(request):
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
 
-        print(f"Successfully processed weather data: {transformed_payload}")
+        logging.info(f"Successfully processed weather data: {transformed_payload}")
 
         return transformed_payload, 200
 
     except Exception as e:
         error_msg = f"Error in fetch_weather function: {str(e)}"
-        print(error_msg)
+        logging.error(error_msg)
         return {"error": error_msg}, 500
