@@ -3,7 +3,7 @@ data "google_project" "project" {
 }
 
 resource "google_service_account" "terraform_ci_sa" {
-  account_id   = "terraform-ci-sa"
+  account_id   = var.terraform_cicd_sa
   display_name = "Terraform CI/CD Service Account"
   project      = var.project_id
 }
@@ -33,7 +33,7 @@ resource "google_service_account_iam_member" "cloudbuild_impersonation" {
 }
 
 resource "google_cloudbuild_trigger" "terraform_plan_trigger" {
-  name        = "terraform-plan-on-push"
+  name        = var.cloud_build_trigger_name
   description = "Trigger to run Terraform Plan on push to main branch"
   project     = var.project_id
 

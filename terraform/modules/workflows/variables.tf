@@ -17,3 +17,13 @@ variable "pubsub_topic_name" {
   description = "The name of the Pub/Sub topic to publish to"
   type        = string
 }
+
+variable "weather_workflow_name" {
+  description = "The name of the workflow that triggers the weather processing task."
+  type        = string
+}
+
+variable "workflow_sa_name" {
+  description = "The name of the workflow service account."
+  type        = string
+}

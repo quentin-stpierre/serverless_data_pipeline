@@ -3,7 +3,7 @@ data "google_project" "project" {
 }
 
 resource "google_pubsub_topic" "weather_topic" {
-  name    = "weather-data"
+  name    = var.topic_name
   project = var.project_id
 }
 
@@ -20,7 +20,7 @@ resource "google_project_iam_member" "pubsub_bq_metadata_viewer" {
 }
 
 resource "google_pubsub_subscription" "bq_subscription" {
-  name    = "weather-data-bq"
+  name    = var.bq_subscription_name
   topic   = google_pubsub_topic.weather_topic.name
   project = var.project_id
 
