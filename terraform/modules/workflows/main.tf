@@ -1,5 +1,5 @@
 resource "google_service_account" "workflow_sa" {
-  account_id   = "weather-pipeline-sa"
+  account_id   = var.workflow_sa_name
   display_name = "Service Account for Weather Pipeline Workflow"
   project      = var.project_id
 }
@@ -29,7 +29,7 @@ resource "google_project_iam_member" "workflow_logging" {
 }
 
 resource "google_workflows_workflow" "weather_workflow" {
-  name            = "weather-data-pipeline"
+  name            = var.weather_workflow_name
   region          = var.region
   project         = var.project_id
   description     = "Orchestrates weather data ingestion from Cloud Function to Pub/Sub"
