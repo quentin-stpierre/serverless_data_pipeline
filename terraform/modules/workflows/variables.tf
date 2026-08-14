@@ -13,6 +13,11 @@ variable "function_uri" {
   type        = string
 }
 
+variable "function_name" {
+  description = "The name of the Cloud Function to invoke"
+  type        = string
+}
+
 variable "pubsub_topic_name" {
   description = "The name of the Pub/Sub topic to publish to"
   type        = string

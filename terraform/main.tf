@@ -56,6 +56,7 @@ module "workflows" {
   project_id        = google_project.project.project_id
   region            = var.region
   function_uri      = module.cloud_function.function_uri
+  function_name     = module.cloud_function.function_name
   pubsub_topic_name = module.pubsub.topic_name
 
   workflow_sa_name      = var.workflow_sa_name

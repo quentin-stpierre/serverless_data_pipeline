@@ -4,20 +4,25 @@ resource "google_service_account" "workflow_sa" {
   project      = var.project_id
 }
 
-resource "google_project_iam_member" "workflow_invoker" {
-  project = var.project_id
-  role    = "roles/run.invoker"
-  member  = "serviceAccount:${google_service_account.workflow_sa.email}"
+resource "google_cloud_run_service_iam_member" "workflow_run_invoker" {
+  project  = var.project_id
+  location = var.region
+  service  = var.function_name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.workflow_sa.email}"
 }
 
-resource "google_project_iam_member" "workflow_gcf_invoker" {
-  project = var.project_id
-  role    = "roles/cloudfunctions.invoker"
-  member  = "serviceAccount:${google_service_account.workflow_sa.email}"
+resource "google_cloudfunctions2_function_iam_member" "workflow_gcf_invoker" {
+  project        = var.project_id
+  location       = var.region
+  cloud_function = var.function_name
+  role           = "roles/cloudfunctions.invoker"
+  member         = "serviceAccount:${google_service_account.workflow_sa.email}"
 }
 
-resource "google_project_iam_member" "workflow_pubsub_publisher" {
+resource "google_pubsub_topic_iam_member" "workflow_pubsub_publisher" {
   project = var.project_id
+  topic   = var.pubsub_topic_name
   role    = "roles/pubsub.publisher"
   member  = "serviceAccount:${google_service_account.workflow_sa.email}"
 }
@@ -43,9 +48,9 @@ resource "google_workflows_workflow" "weather_workflow" {
   })
 
   depends_on = [
-    google_project_iam_member.workflow_invoker,
-    google_project_iam_member.workflow_gcf_invoker,
-    google_project_iam_member.workflow_pubsub_publisher,
+    google_cloud_run_service_iam_member.workflow_run_invoker,
+    google_cloudfunctions2_function_iam_member.workflow_gcf_invoker,
+    google_pubsub_topic_iam_member.workflow_pubsub_publisher,
     google_project_iam_member.workflow_logging
   ]
 }
