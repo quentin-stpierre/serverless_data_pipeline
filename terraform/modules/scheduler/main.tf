@@ -8,12 +8,6 @@ resource "google_project_iam_member" "scheduler_workflow_invoker" {
   project = var.project_id
   role    = "roles/workflows.invoker"
   member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
-
-  condition {
-    title       = "restrict-to-single-workflow"
-    description = "Only allow invoking ${var.workflow_name}"
-    expression  = "resource.name == \"projects/${var.project_id}/locations/${var.region}/workflows/${var.workflow_name}\""
-  }
 }
 
 resource "google_cloud_scheduler_job" "workflow_trigger" {
