@@ -46,7 +46,8 @@ def fetch_weather(request):
 
     # --- 1. Get the API key ---
     try:
-        api_key = get_secret("open-weather-map-api-key")
+        api_key = get_secret("open")
+        # api_key = get_secret("open-weather-map-api-key")
     except gcp_exceptions.NotFound as e:
         logger.critical(
             f"Secret not found — check secret name/permissions: {e}",
