@@ -25,16 +25,61 @@ resource "google_project_iam_member" "terraform_ci_sa_roles" {
   member  = "serviceAccount:${google_service_account.terraform_ci_sa.email}"
 }
 
-# Grant Cloud Build Service Agent permission to act as the custom Service Account
 resource "google_service_account_iam_member" "cloudbuild_impersonation" {
   service_account_id = google_service_account.terraform_ci_sa.name
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
 }
 
+resource "google_storage_bucket" "tf_plans" {
+  name                        = "${var.project_id}-tf-plans"
+  project                     = var.project_id
+  location                    = var.region
+  uniform_bucket_level_access = true
+  force_destroy               = false
+
+  lifecycle_rule {
+    condition {
+      age = 14 # auto-clean stale/abandoned plans after 2 weeks
+    }
+    action {
+      type = "Delete"
+    }
+  }
+}
+
+# --- PR trigger: runs `terraform plan`, reports pass/fail as a GitHub check ---
 resource "google_cloudbuild_trigger" "terraform_plan_trigger" {
   name        = var.cloud_build_trigger_name
-  description = "Trigger to run Terraform Plan on push to main branch"
+  description = "Run Terraform Plan on pull requests targeting main"
+  project     = var.project_id
+
+  github {
+    owner = var.github_owner
+    name  = var.github_repo
+    pull_request {
+      branch          = "^main$"
+      comment_control = "COMMENTS_DISABLED"
+    }
+  }
+
+  service_account = google_service_account.terraform_ci_sa.id
+  filename        = "cloudbuild.plan.yaml"
+
+  substitutions = {
+    _PLAN_BUCKET = google_storage_bucket.tf_plans.name
+  }
+
+  depends_on = [
+    google_project_iam_member.terraform_ci_sa_roles,
+    google_service_account_iam_member.cloudbuild_impersonation
+  ]
+}
+
+# --- Push-to-main trigger: runs `terraform apply`, paused for manual approval ---
+resource "google_cloudbuild_trigger" "terraform_apply_trigger" {
+  name        = "${var.cloud_build_trigger_name}-apply"
+  description = "Run Terraform Apply on push to main, gated by manual approval"
   project     = var.project_id
 
   github {
@@ -46,13 +91,27 @@ resource "google_cloudbuild_trigger" "terraform_plan_trigger" {
   }
 
   service_account = google_service_account.terraform_ci_sa.id
+  filename        = "cloudbuild.apply.yaml"
 
-  # Use the cloudbuild.yaml at the root
-  filename = "cloudbuild.yaml"
+  approval_config {
+    approval_required = true
+  }
 
-  # Ensure roles are fully bound and impersonation is active before trigger is created/run
+  substitutions = {
+    _PLAN_BUCKET = google_storage_bucket.tf_plans.name
+  }
+
   depends_on = [
     google_project_iam_member.terraform_ci_sa_roles,
     google_service_account_iam_member.cloudbuild_impersonation
   ]
+}
+
+# Whoever needs to click "Approve"/"Reject" on the apply build needs this role
+resource "google_project_iam_member" "terraform_apply_approvers" {
+  for_each = toset(var.terraform_apply_approvers) # e.g. ["user:alice@example.com", "group:platform-team@example.com"]
+
+  project = var.project_id
+  role    = "roles/cloudbuild.builds.approver"
+  member  = each.key
 }
