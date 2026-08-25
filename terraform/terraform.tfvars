@@ -30,9 +30,10 @@ table_id   = "transformed_weather_data"
 alert_email_address = "quentin.st-pierre@devoteam.com"
 
 # CI/CD
-terraform_cicd_sa        = "terraform-ci-sa"
-cloud_build_trigger_name = "terraform-plan-on-push"
-github_owner             = "quentin-stpierre"
-github_repo              = "serverless_data_pipeline"
+terraform_cicd_sa         = "terraform-ci-sa"
+cloud_build_trigger_name  = "terraform-plan-on-pr"
+github_owner              = "quentin-stpierre"
+github_repo               = "serverless_data_pipeline"
+terraform_apply_approvers = ["user:quentin.st-pierre@devoteam.com"]
 
 # URL = "https://api.openweathermap.org/data/2.5/weather?lat=50.8503&lon=4.3517&units=metric&appid={YOUR_API_KEY}"

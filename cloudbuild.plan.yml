@@ -1,0 +1,26 @@
+steps:
+  - name: 'hashicorp/terraform:1.9'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -eu
+
+        # Content hash of all .tf files — stable across a clean merge,
+        # since the merge commit's file content matches the PR head's.
+        TF_HASH=$(find . -name '*.tf' -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+        echo "$TF_HASH" > /workspace/tf_hash.txt
+        echo "Computed plan hash: $TF_HASH"
+
+        terraform init -input=false
+        terraform plan -input=false -out=/workspace/tfplan
+
+  - name: 'gcr.io/cloud-builders/gsutil'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -eu
+        TF_HASH=$(cat /workspace/tf_hash.txt)
+        gsutil cp /workspace/tfplan gs://${_PLAN_BUCKET}/plans/$${TF_HASH}.tfplan
+        echo "Uploaded plan for hash $${TF_HASH}"

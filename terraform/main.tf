@@ -119,8 +119,9 @@ module "cicd" {
   github_owner = var.github_owner
   github_repo  = var.github_repo
 
-  terraform_cicd_sa        = var.terraform_cicd_sa
-  cloud_build_trigger_name = var.cloud_build_trigger_name
-
-  depends_on = [google_project_service.services]
+  terraform_cicd_sa         = var.terraform_cicd_sa
+  cloud_build_trigger_name  = var.cloud_build_trigger_name
+  terraform_apply_approvers = var.terraform_apply_approvers
+  depends_on                = [google_project_service.services]
+  region                    = var.region
 }

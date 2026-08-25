@@ -37,7 +37,7 @@ variable "terraform_cicd_sa" {
   type        = string
 }
 variable "cloud_build_trigger_name" {
-  description = "terraform-plan-on-push"
+  description = "terraform-plan-on-pr"
   type        = string
 }
 variable "github_owner" {
@@ -48,6 +48,11 @@ variable "github_repo" {
   description = "The name of the GitHub repository"
   type        = string
 }
+variable "terraform_apply_approvers" {
+  description = "The list of principals that are allowed to approve the terraform apply."
+  type        = list(string)
+}
+
 
 ### CLOUD SCHEDULER ###
 variable "workflow_trigger_name" {

@@ -1,0 +1,33 @@
+steps:
+  - name: 'hashicorp/terraform:1.9'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -eu
+        TF_HASH=$(find . -name '*.tf' -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+        echo "$TF_HASH" > /workspace/tf_hash.txt
+        echo "Looking for plan with hash: $TF_HASH"
+
+  - name: 'gcr.io/cloud-builders/gsutil'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -eu
+        TF_HASH=$(cat /workspace/tf_hash.txt)
+        if ! gsutil cp gs://${_PLAN_BUCKET}/plans/$${TF_HASH}.tfplan /workspace/tfplan; then
+          echo "ERROR: no matching reviewed plan found for hash $${TF_HASH}."
+          echo "This usually means main changed after the PR was planned/approved."
+          echo "Open a new PR (even a no-op rebase) to generate a fresh reviewed plan."
+          exit 1
+        fi
+
+  - name: 'hashicorp/terraform:1.9'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        set -eu
+        terraform init -input=false
+        terraform apply -input=false /workspace/tfplan
