@@ -19,7 +19,7 @@ resource "google_storage_bucket_object" "function_zip_object" {
 }
 
 resource "google_service_account" "function_sa" {
-  account_id   = "fetch-weather-sa"
+  account_id   = var.cloud_function_sa_name
   display_name = "Fetch Weather Cloud Function Service Account"
   project      = var.project_id
 }
@@ -32,7 +32,7 @@ resource "google_secret_manager_secret_iam_member" "secret_accessor" {
 }
 
 resource "google_cloudfunctions2_function" "fetch_weather" {
-  name        = "fetch-weather"
+  name        = var.cloud_function_name
   location    = var.region
   project     = var.project_id
   description = "HTTP-triggered function to fetch and transform OpenWeatherMap data"

@@ -1,5 +1,5 @@
 resource "google_service_account" "scheduler_sa" {
-  account_id   = "weather-scheduler-sa"
+  account_id   = var.scheduler_sa_name
   display_name = "Service Account for Weather Pipeline Cloud Scheduler"
   project      = var.project_id
 }
@@ -11,7 +11,7 @@ resource "google_project_iam_member" "scheduler_workflow_invoker" {
 }
 
 resource "google_cloud_scheduler_job" "workflow_trigger" {
-  name             = "weather-workflow-trigger"
+  name             = var.workflow_trigger_name
   description      = "Trigger weather workflow daily at 9am Europe/Brussels"
   schedule         = "0 9 * * *"
   time_zone        = "Europe/Brussels"

@@ -26,18 +26,6 @@ resource "google_project_service" "services" {
   disable_on_destroy = false
 }
 
-
-module "bigquery" {
-  source = "./modules/bigquery"
-
-  project_id = google_project.project.project_id
-  dataset_id = var.dataset_id
-  table_id   = var.table_id
-  region     = var.region
-
-  depends_on = [google_project_service.services]
-}
-
 resource "google_secret_manager_secret" "open_weather_map_api_key" {
   secret_id = "open-weather-map-api-key"
   project   = google_project.project.project_id
@@ -49,12 +37,43 @@ resource "google_secret_manager_secret" "open_weather_map_api_key" {
   depends_on = [google_project_service.services]
 }
 
+module "scheduler" {
+  source = "./modules/scheduler"
+
+  project_id    = google_project.project.project_id
+  region        = var.region
+  workflow_name = module.workflows.workflow_name
+
+  scheduler_sa_name     = var.scheduler_sa_name
+  workflow_trigger_name = var.workflow_trigger_name
+
+  depends_on = [google_project_service.services, module.workflows]
+}
+
+module "workflows" {
+  source = "./modules/workflows"
+
+  project_id        = google_project.project.project_id
+  region            = var.region
+  function_uri      = module.cloud_function.function_uri
+  function_name     = module.cloud_function.function_name
+  pubsub_topic_name = module.pubsub.topic_name
+
+  workflow_sa_name      = var.workflow_sa_name
+  weather_workflow_name = var.weather_workflow_name
+
+  depends_on = [google_project_service.services, module.cloud_function, module.pubsub]
+}
+
 module "cloud_function" {
   source = "./modules/cloud_function"
 
   project_id = google_project.project.project_id
   region     = var.region
   secret_id  = google_secret_manager_secret.open_weather_map_api_key.secret_id
+
+  cloud_function_sa_name = var.cloud_function_sa_name
+  cloud_function_name    = var.cloud_function_name
 
   depends_on = [google_project_service.services]
 }
@@ -66,28 +85,21 @@ module "pubsub" {
   dataset_id = module.bigquery.dataset_id
   table_id   = module.bigquery.table_id
 
+  topic_name           = var.topic_name
+  bq_subscription_name = var.bq_subscription_name
+
   depends_on = [google_project_service.services, module.bigquery]
 }
 
-module "workflows" {
-  source = "./modules/workflows"
+module "bigquery" {
+  source = "./modules/bigquery"
 
-  project_id        = google_project.project.project_id
-  region            = var.region
-  function_uri      = module.cloud_function.function_uri
-  pubsub_topic_name = module.pubsub.topic_name
+  project_id = google_project.project.project_id
+  dataset_id = var.dataset_id
+  table_id   = var.table_id
+  region     = var.region
 
-  depends_on = [google_project_service.services, module.cloud_function, module.pubsub]
-}
-
-module "scheduler" {
-  source = "./modules/scheduler"
-
-  project_id    = google_project.project.project_id
-  region        = var.region
-  workflow_name = module.workflows.workflow_name
-
-  depends_on = [google_project_service.services, module.workflows]
+  depends_on = [google_project_service.services]
 }
 
 module "monitoring" {
@@ -106,6 +118,9 @@ module "cicd" {
   project_id   = google_project.project.project_id
   github_owner = var.github_owner
   github_repo  = var.github_repo
+
+  terraform_cicd_sa        = var.terraform_cicd_sa
+  cloud_build_trigger_name = var.cloud_build_trigger_name
 
   depends_on = [google_project_service.services]
 }

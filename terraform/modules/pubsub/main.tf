@@ -3,24 +3,26 @@ data "google_project" "project" {
 }
 
 resource "google_pubsub_topic" "weather_topic" {
-  name    = "weather-data"
+  name    = var.topic_name
   project = var.project_id
 }
 
-resource "google_project_iam_member" "pubsub_bq_editor" {
-  project = var.project_id
-  role    = "roles/bigquery.dataEditor"
-  member  = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+resource "google_bigquery_dataset_iam_member" "pubsub_bq_editor" {
+  project    = var.project_id
+  dataset_id = var.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
-resource "google_project_iam_member" "pubsub_bq_metadata_viewer" {
-  project = var.project_id
-  role    = "roles/bigquery.metadataViewer"
-  member  = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+resource "google_bigquery_dataset_iam_member" "pubsub_bq_metadata_viewer" {
+  project    = var.project_id
+  dataset_id = var.dataset_id
+  role       = "roles/bigquery.metadataViewer"
+  member     = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
 resource "google_pubsub_subscription" "bq_subscription" {
-  name    = "weather-data-bq"
+  name    = var.bq_subscription_name
   topic   = google_pubsub_topic.weather_topic.name
   project = var.project_id
 
@@ -32,7 +34,7 @@ resource "google_pubsub_subscription" "bq_subscription" {
   }
 
   depends_on = [
-    google_project_iam_member.pubsub_bq_editor,
-    google_project_iam_member.pubsub_bq_metadata_viewer
+    google_bigquery_dataset_iam_member.pubsub_bq_editor,
+    google_bigquery_dataset_iam_member.pubsub_bq_metadata_viewer
   ]
 }
