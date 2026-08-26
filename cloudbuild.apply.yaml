@@ -9,6 +9,8 @@ steps:
       - '-c'
       - |
         set -eu
+        cd terraform
+
         TF_HASH=$$(find . -name '*.tf' -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
         echo "$$TF_HASH" > /workspace/tf_hash.txt
         echo "Looking for plan with hash: $$TF_HASH"
@@ -33,5 +35,6 @@ steps:
       - '-c'
       - |
         set -eu
+        cd terraform
         terraform init -input=false
         terraform apply -input=false /workspace/tfplan
