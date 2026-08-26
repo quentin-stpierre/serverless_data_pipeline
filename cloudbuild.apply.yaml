@@ -1,3 +1,7 @@
+# cloudbuild.apply.yaml
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 steps:
   - name: 'hashicorp/terraform:1.9'
     entrypoint: 'sh'
@@ -5,9 +9,11 @@ steps:
       - '-c'
       - |
         set -eu
-        TF_HASH=$(find . -name '*.tf' -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
-        echo "$TF_HASH" > /workspace/tf_hash.txt
-        echo "Looking for plan with hash: $TF_HASH"
+        cd terraform
+
+        TF_HASH=$$(find . -name '*.tf' -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+        echo "$$TF_HASH" > /workspace/tf_hash.txt
+        echo "Looking for plan with hash: $$TF_HASH"
 
   - name: 'gcr.io/cloud-builders/gsutil'
     entrypoint: 'sh'
@@ -15,7 +21,7 @@ steps:
       - '-c'
       - |
         set -eu
-        TF_HASH=$(cat /workspace/tf_hash.txt)
+        TF_HASH=$$(cat /workspace/tf_hash.txt)
         if ! gsutil cp gs://${_PLAN_BUCKET}/plans/$${TF_HASH}.tfplan /workspace/tfplan; then
           echo "ERROR: no matching reviewed plan found for hash $${TF_HASH}."
           echo "This usually means main changed after the PR was planned/approved."
@@ -29,5 +35,6 @@ steps:
       - '-c'
       - |
         set -eu
+        cd terraform
         terraform init -input=false
         terraform apply -input=false /workspace/tfplan
