@@ -36,5 +36,5 @@ steps:
       - |
         set -eu
         cd terraform
-        terraform init -input=false
-        terraform apply -input=false /workspace/tfplan
+        terraform init
+        terraform apply /workspace/tfplan
