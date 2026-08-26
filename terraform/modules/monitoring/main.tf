@@ -1,6 +1,6 @@
 resource "google_monitoring_notification_channel" "email_channel" {
   project      = var.project_id
-  display_name = "Workflow Alert Notification Channel"
+  display_name = "Workflow Alert Notification"
   type         = "email"
   labels = {
     email_address = var.alert_email_address
