@@ -102,6 +102,17 @@ module "bigquery" {
   depends_on = [google_project_service.services]
 }
 
+module "storage" {
+  source = "./modules/storage"
+
+  project_id              = google_project.project.project_id
+  region                  = var.region
+  bucket_name             = var.raw_data_bucket_name
+  cloud_function_sa_email = "" # Can be bound to the scraper's SA once provisioned
+
+  depends_on = [google_project_service.services]
+}
+
 module "monitoring" {
   source = "./modules/monitoring"
 

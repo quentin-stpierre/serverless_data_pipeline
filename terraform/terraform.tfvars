@@ -26,6 +26,9 @@ bq_subscription_name = "weather-data-bq"
 dataset_id = "processed_weather_data"
 table_id   = "transformed_weather_data"
 
+# Storage
+raw_data_bucket_name = "serverless-data-pipeline-111-raw-data"
+
 # Monitoring
 alert_email_address = "quentin.st-pierre@devoteam.com"
 

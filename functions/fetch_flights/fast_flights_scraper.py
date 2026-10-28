@@ -1,6 +1,13 @@
-from datetime import datetime, timedelta
+import json
+import os
+import uuid
+from dataclasses import asdict, is_dataclass
+from datetime import date, datetime, timedelta
+from typing import Any
+
 from fast_flights import FlightQuery, FlightsNotFound, Passengers, create_query, get_flights
 from fast_flights.integrations.base import FetchIntegration
+from google.cloud import storage
 from primp import Client
 
 
@@ -32,29 +39,19 @@ def generate_flexible_date_pairs(
     return pairs
 
 
-def _combine_flight_pair(outbound_flight, return_flight) -> dict:
-    """Combines the outbound and matching return Flights objects into a single dictionary."""
-    out_leg = outbound_flight.flights[0]
-    ret_leg = return_flight.flights[0]
-
-    out_y, out_m, out_d = out_leg.departure.date
-    out_hr, out_min = out_leg.departure.time
-    ret_y, ret_m, ret_d = ret_leg.departure.date
-    ret_hr, ret_min = ret_leg.departure.time
-
-    return {
-        "source": "Google Flights",
-        "round_trip_price": outbound_flight.price,
-        "from_airport": out_leg.from_airport.code,
-        "to_airport": out_leg.to_airport.code,
-        "outbound_airline": ", ".join(outbound_flight.airlines),
-        "outbound_date": f"{out_y:04d}-{out_m:02d}-{out_d:02d}",
-        "outbound_departure_time": f"{out_hr:02d}:{out_min:02d}",
-        "outbound_duration": out_leg.duration,
-        "return_date": f"{ret_y:04d}-{ret_m:02d}-{ret_d:02d}",
-        "return_departure_time": f"{ret_hr:02d}:{ret_min:02d}",
-        "return_duration": ret_leg.duration,
-    }
+def _to_serializable(obj: Any) -> Any:
+    """Recursively converts an object to a JSON-serializable format, supporting dataclasses."""
+    if is_dataclass(obj):
+        return asdict(obj)
+    if hasattr(obj, "__dict__"):
+        return {k: _to_serializable(v) for k, v in obj.__dict__.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_serializable(item) for item in obj]
+    if isinstance(obj, dict):
+        return {k: _to_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    return obj
 
 
 def fetch_flights_for_date_pairs(
@@ -66,13 +63,12 @@ def fetch_flights_for_date_pairs(
     adults: int = 1,
     max_stops: int = 0,
 ) -> list[dict]:
-    """Queries Google Flights for each date pair and returns the cheapest combined round-trip dictionary."""
+    """Queries Google Flights for each date pair and returns all raw flight records."""
     integration = ConsentAwareFetchIntegration()
-    combined_results: list[dict] = []
-    return_cache: dict[str, list] = {}
+    raw_results: list[dict] = []
 
     for outbound_date, return_date in date_pairs:
-        # 1. Fetch round-trip outbound options (includes bundled round-trip price)
+        # 1. Fetch round-trip options (raw)
         rt_query = create_query(
             flights=[
                 FlightQuery(date=outbound_date, from_airport=origin, to_airport=destination, max_stops=max_stops),
@@ -85,40 +81,75 @@ def fetch_flights_for_date_pairs(
             passengers=Passengers(adults=adults),
         )
         try:
-            rt_flights = [f for f in get_flights(rt_query, integration=integration) if f.price is not None]
+            for flight in get_flights(rt_query, integration=integration):
+                data = _to_serializable(flight)
+                data["_query_meta"] = {
+                    "outbound_date": outbound_date,
+                    "return_date": return_date,
+                    "origin": origin,
+                    "destination": destination,
+                    "trip": "round-trip",
+                    "currency": currency,
+                    "seat": seat,
+                }
+                raw_results.append(data)
         except FlightsNotFound:
-            rt_flights = []
+            pass
 
-        if not rt_flights:
-            continue
+        # 2. Fetch return leg options (raw)
+        ret_query = create_query(
+            flights=[
+                FlightQuery(date=return_date, from_airport=destination, to_airport=origin, max_stops=max_stops),
+            ],
+            trip="one-way",
+            seat=seat,
+            currency=currency,
+            max_stops=max_stops,
+            passengers=Passengers(adults=adults),
+        )
+        try:
+            for flight in get_flights(ret_query, integration=integration):
+                data = _to_serializable(flight)
+                data["_query_meta"] = {
+                    "outbound_date": outbound_date,
+                    "return_date": return_date,
+                    "origin": destination,
+                    "destination": origin,
+                    "trip": "one-way",
+                    "currency": currency,
+                    "seat": seat,
+                }
+                raw_results.append(data)
+        except FlightsNotFound:
+            pass
 
-        # 2. Fetch return leg options (cached per unique return_date)
-        if return_date not in return_cache:
-            ret_query = create_query(
-                flights=[
-                    FlightQuery(date=return_date, from_airport=destination, to_airport=origin, max_stops=max_stops),
-                ],
-                trip="one-way",
-                seat=seat,
-                currency=currency,
-                max_stops=max_stops,
-                passengers=Passengers(adults=adults),
-            )
-            try:
-                return_cache[return_date] = list(get_flights(ret_query, integration=integration))
-            except FlightsNotFound:
-                return_cache[return_date] = []
+    return raw_results
 
-        cheapest_outbound = min(rt_flights, key=lambda f: f.price)
-        matching_returns = [
-            f for f in return_cache[return_date] if f.airlines == cheapest_outbound.airlines
-        ]
-        if not matching_returns:
-            continue
 
-        combined_results.append(_combine_flight_pair(cheapest_outbound, matching_returns[0]))
+def upload_raw_data_to_gcs(
+    bucket_name: str,
+    data: list[dict],
+    source: str = "google_flights",
+) -> str | None:
+    """Dumps raw flight records as a JSONL file to the specified Google Cloud Storage bucket."""
+    if not data:
+        print("No flight data to upload.")
+        return None
 
-    return combined_results
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+
+    scrape_id = str(uuid.uuid4())
+    dt_str = datetime.utcnow().strftime("%Y-%m-%d")
+    blob_name = f"raw/source={source}/dt={dt_str}/{scrape_id}.jsonl"
+
+    blob = bucket.blob(blob_name)
+    jsonl_content = "\n".join(json.dumps(record, default=str) for record in data)
+    blob.upload_from_string(jsonl_content, content_type="application/x-ndjson")
+
+    gcs_uri = f"gs://{bucket_name}/{blob_name}"
+    print(f"Successfully uploaded {len(data)} raw records to {gcs_uri}")
+    return gcs_uri
 
 
 if __name__ == "__main__":
@@ -132,4 +163,8 @@ if __name__ == "__main__":
         origin="BRU",
         destination="YUL",
     )
-    print(results)
+    bucket_name = os.environ.get("RAW_DATA_BUCKET")
+    if bucket_name:
+        upload_raw_data_to_gcs(bucket_name=bucket_name, data=results)
+    else:
+        print(f"Scraped {len(results)} records. RAW_DATA_BUCKET environment variable not set; skipping upload.")

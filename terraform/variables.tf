@@ -95,6 +95,12 @@ variable "bq_subscription_name" {
   type        = string
 }
 
+### STORAGE ###
+variable "raw_data_bucket_name" {
+  description = "The name of the GCS bucket to store raw flight data"
+  type        = string
+}
+
 ### BIGQUERY ###
 variable "dataset_id" {
   description = "The ID of the BigQuery dataset."
