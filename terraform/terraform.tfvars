@@ -44,7 +44,7 @@ raw_data_bucket_name = "serverless-data-pipeline-111-raw-data"
 
 # BigQuery
 dataset_id = "raw_flight_data"
-table_id   = "flights_landing"
+table_id   = "ext_google_flights"
 
 # Monitoring
 alert_email_address = "quentin.st-pierre@devoteam.com"

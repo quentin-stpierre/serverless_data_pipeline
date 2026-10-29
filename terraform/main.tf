@@ -67,12 +67,13 @@ module "cloud_function" {
 module "bigquery" {
   source = "./modules/bigquery"
 
-  project_id = google_project.project.project_id
-  dataset_id = var.dataset_id
-  table_id   = var.table_id
-  region     = var.region
+  project_id      = google_project.project.project_id
+  dataset_id      = var.dataset_id
+  table_id        = var.table_id
+  region          = var.region
+  raw_bucket_name = module.storage.bucket_name
 
-  depends_on = [google_project_service.services]
+  depends_on = [google_project_service.services, module.storage]
 }
 
 module "storage" {
