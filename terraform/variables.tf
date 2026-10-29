@@ -1,4 +1,3 @@
-
 ### GENERAL ###
 variable "project_name" {
   description = "The name of the GCP project"
@@ -53,15 +52,26 @@ variable "terraform_apply_approvers" {
   type        = list(string)
 }
 
-
 ### CLOUD SCHEDULER ###
-variable "workflow_trigger_name" {
-  description = "The name of the Cloud Workflow trigger (Cloud Schedule trigger)."
-  type        = string
-}
 variable "scheduler_sa_name" {
   description = "The name of the Cloud Scheduler service account."
   type        = string
+}
+
+variable "flight_searches" {
+  description = "Map of flight search configurations to schedule"
+  type = map(object({
+    schedule           = string
+    origin             = string
+    destination        = string
+    start_date         = string
+    trip_length        = number
+    flexibility_window = number
+    currency           = optional(string, "EUR")
+    seat               = optional(string, "economy")
+    adults             = optional(number, 1)
+    max_stops          = optional(number, 0)
+  }))
 }
 
 ### WORKFLOWS ###
@@ -69,29 +79,19 @@ variable "workflow_sa_name" {
   description = "The name of the workflow service account."
   type        = string
 }
-variable "weather_workflow_name" {
-  description = "The name of the workflow that triggers the weather processing task."
+variable "flight_workflow_name" {
+  description = "The name of the workflow that triggers the flight scraper."
   type        = string
 }
 
-### CLOUD FUNCTION
+### CLOUD FUNCTION ###
 variable "cloud_function_sa_name" {
-  description = "The name of the cloud function service account."
+  description = "The name of the scraper cloud function service account."
   type        = string
 }
 
 variable "cloud_function_name" {
-  description = "The name of the cloud function processing weather data."
-  type        = string
-}
-
-### PUBSUB ###
-variable "topic_name" {
-  description = "The name of the PubSub topic"
-  type        = string
-}
-variable "bq_subscription_name" {
-  description = "The name of BigQuery's PubSub subscription."
+  description = "The name of the cloud function executing flight scraping."
   type        = string
 }
 

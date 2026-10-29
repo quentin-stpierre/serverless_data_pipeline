@@ -1,23 +1,13 @@
 main:
+  params: [args]
   steps:
-    - fetch_weather_data:
-        call: http.get
+    - scrape_flights:
+        call: http.post
         args:
           url: ${function_uri}
+          body: $${args}
           auth:
             type: OIDC
-        result: function_result
-    - prepare_pubsub_message:
-        assign:
-          - message: $${function_result.body}
-          - encoded_message: $${base64.encode(json.encode(message))}
-    - publish_to_pubsub:
-        call: googleapis.pubsub.v1.projects.topics.publish
-        args:
-          topic: projects/${project_id}/topics/${pubsub_topic_name}
-          body:
-            messages:
-              - data: $${encoded_message}
-        result: publish_result
+        result: scrape_result
     - return_result:
-        return: $${publish_result}
+        return: $${scrape_result.body}

@@ -13,12 +13,23 @@ variable "workflow_name" {
   type        = string
 }
 
-variable "workflow_trigger_name" {
-  description = "The name of the Cloud Workflow trigger (Cloud Schedule trigger)."
-  type        = string
-}
-
 variable "scheduler_sa_name" {
   description = "The name of the Cloud Scheduler service account."
   type        = string
+}
+
+variable "flight_searches" {
+  description = "Map of flight search configurations to schedule"
+  type = map(object({
+    schedule           = string
+    origin             = string
+    destination        = string
+    start_date         = string
+    trip_length        = number
+    flexibility_window = number
+    currency           = optional(string, "EUR")
+    seat               = optional(string, "economy")
+    adults             = optional(number, 1)
+    max_stops          = optional(number, 0)
+  }))
 }

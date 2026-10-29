@@ -18,13 +18,8 @@ variable "function_name" {
   type        = string
 }
 
-variable "pubsub_topic_name" {
-  description = "The name of the Pub/Sub topic to publish to"
-  type        = string
-}
-
-variable "weather_workflow_name" {
-  description = "The name of the workflow that triggers the weather processing task."
+variable "workflow_name" {
+  description = "The name of the Cloud Workflow"
   type        = string
 }
 

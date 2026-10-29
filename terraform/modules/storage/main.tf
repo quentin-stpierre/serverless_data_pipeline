@@ -1,4 +1,4 @@
-resource "google_storage_bucket" "raw_bucket" {
+resource "google_storage_bucket" "raw_flights_data_bucket" {
   name                        = var.bucket_name
   project                     = var.project_id
   location                    = var.region
@@ -21,7 +21,7 @@ resource "google_storage_bucket" "raw_bucket" {
 
 resource "google_storage_bucket_iam_member" "cloud_function_writer" {
   count  = var.cloud_function_sa_email != "" ? 1 : 0
-  bucket = google_storage_bucket.raw_bucket.name
+  bucket = google_storage_bucket.raw_flights_data_bucket.name
   role   = "roles/storage.objectUser"
   member = "serviceAccount:${var.cloud_function_sa_email}"
 }
