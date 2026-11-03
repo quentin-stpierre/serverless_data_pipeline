@@ -18,3 +18,8 @@ variable "default_branch" {
   type        = string
   default     = "main"
 }
+
+variable "workflow_sa_email" {
+  description = "The service account email of the Cloud Workflows orchestrator"
+  type        = string
+}

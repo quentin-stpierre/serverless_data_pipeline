@@ -42,10 +42,11 @@ resource "google_workflows_workflow" "pipeline_workflow" {
   deletion_protection = false
 
   source_contents = templatefile("${path.module}/workflow.yaml", {
-    function_uri       = var.function_uri
-    project_id         = var.project_id
-    region             = var.region
-    dataform_repo_name = var.dataform_repo_name
+    function_uri             = var.function_uri
+    project_id               = var.project_id
+    region                   = var.region
+    dataform_repo_name       = var.dataform_repo_name
+    dataform_runner_sa_email = var.dataform_runner_sa_email
   })
 
   depends_on = [

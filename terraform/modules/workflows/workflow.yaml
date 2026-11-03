@@ -28,6 +28,8 @@ main:
             type: OAuth2
           body:
             compilationResult: $${compilation_result.body.name}
+            invocationConfig:
+              serviceAccount: "${dataform_runner_sa_email}"
         result: invocation_result
 
     - return_result:

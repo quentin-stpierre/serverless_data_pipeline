@@ -42,11 +42,12 @@ module "scheduler" {
 module "workflows" {
   source = "./modules/workflows"
 
-  project_id         = google_project.project.project_id
-  region             = var.region
-  function_uri       = module.cloud_function.function_uri
-  function_name      = module.cloud_function.function_name
-  dataform_repo_name = module.dataform.repository_name
+  project_id               = google_project.project.project_id
+  region                   = var.region
+  function_uri             = module.cloud_function.function_uri
+  function_name            = module.cloud_function.function_name
+  dataform_repo_name       = module.dataform.repository_name
+  dataform_runner_sa_email = module.dataform.dataform_runner_sa_email
 
   workflow_sa_name = var.workflow_sa_name
   workflow_name    = var.flight_workflow_name
@@ -60,6 +61,7 @@ module "dataform" {
   project_id         = google_project.project.project_id
   region             = var.region
   git_repository_url = "https://github.com/${var.github_owner}/${var.github_repo}.git"
+  workflow_sa_email  = "${var.workflow_sa_name}@${google_project.project.project_id}.iam.gserviceaccount.com"
 
   depends_on = [google_project_service.services, module.bigquery]
 }

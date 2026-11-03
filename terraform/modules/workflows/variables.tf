@@ -32,3 +32,8 @@ variable "dataform_repo_name" {
   description = "The name of the Dataform repository to invoke"
   type        = string
 }
+
+variable "dataform_runner_sa_email" {
+  description = "The service account email used for Dataform invocations"
+  type        = string
+}
