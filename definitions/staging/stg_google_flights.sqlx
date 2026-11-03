@@ -1,7 +1,7 @@
 config {
   type: "view",
   schema: "flight_staging",
-  description: "Silver staging view: clean datatypes, unnest JSON metadata, and generate itinerary surrogate keys"
+  description: "Silver staging view: clean datatypes, unnest flight legs, and generate itinerary surrogate keys"
 }
 
 WITH raw_source AS (
@@ -9,30 +9,35 @@ WITH raw_source AS (
     -- Hive partition column from GCS path (dt=YYYY-MM-DD)
     CAST(dt AS DATE) AS scraped_at_date,
 
-    -- Itinerary Dimensions
-    TRIM(from_airport) AS origin_airport,
-    TRIM(to_airport) AS destination_airport,
-    CAST(outbound_date AS DATE) AS outbound_date,
-    CAST(return_date AS DATE) AS return_date,
-    TRIM(outbound_airline) AS airlines,
-    PARSE_TIME('%H:%M', outbound_departure_time) AS outbound_departure_time,
-    CAST(outbound_duration AS INT64) AS outbound_duration_mins,
-    PARSE_TIME('%H:%M', return_departure_time) AS return_departure_time,
-    CAST(return_duration AS INT64) AS return_duration_mins,
+    -- Extract itinerary dimensions from flights array and query metadata
+    COALESCE(flights[SAFE_OFFSET(0)].from_airport.code, _query_meta.origin) AS origin_airport,
+    COALESCE(flights[SAFE_OFFSET(0)].to_airport.code, _query_meta.destination) AS destination_airport,
+    PARSE_DATE('%Y-%m-%d', _query_meta.outbound_date) AS outbound_date,
+    PARSE_DATE('%Y-%m-%d', _query_meta.return_date) AS return_date,
+    ARRAY_TO_STRING(airlines, ', ') AS airlines,
 
-    -- Metrics
-    CAST(round_trip_price AS NUMERIC) AS price,
+    -- Construct departure time (hours and minutes)
+    TIME(
+      flights[SAFE_OFFSET(0)].departure.time[SAFE_OFFSET(0)],
+      flights[SAFE_OFFSET(0)].departure.time[SAFE_OFFSET(1)],
+      0
+    ) AS outbound_departure_time,
+    CAST(flights[SAFE_OFFSET(0)].duration AS INT64) AS outbound_duration_mins,
 
-    -- Unnest query metadata
-    COALESCE(JSON_VALUE(_query_meta, '$.seat'), 'economy') AS seat_class,
-    COALESCE(JSON_VALUE(_query_meta, '$.currency'), 'EUR') AS currency,
-    COALESCE(JSON_VALUE(_query_meta, '$.trip'), 'round-trip') AS trip_type,
+    -- Return leg placeholder (for multi-leg or one-way tracking)
+    CAST(NULL AS TIME) AS return_departure_time,
+    CAST(NULL AS INT64) AS return_duration_mins,
 
-    source AS data_source
+    -- Price & Metadata
+    CAST(price AS NUMERIC) AS price,
+    COALESCE(_query_meta.seat, 'economy') AS seat_class,
+    COALESCE(_query_meta.currency, 'EUR') AS currency,
+    COALESCE(_query_meta.trip, 'round-trip') AS trip_type,
+    'google_flights' AS data_source
   FROM
     ${ref("ext_google_flights")}
   WHERE
-    source != 'init'
+    type != 'seed'
 )
 
 SELECT
@@ -40,11 +45,11 @@ SELECT
   TO_HEX(MD5(CONCAT(
     origin_airport, '|',
     destination_airport, '|',
-    outbound_date, '|',
-    return_date, '|',
+    CAST(outbound_date AS STRING), '|',
+    CAST(return_date AS STRING), '|',
     airlines, '|',
-    outbound_departure_time, '|',
-    return_departure_time
+    COALESCE(CAST(outbound_departure_time AS STRING), ''), '|',
+    COALESCE(CAST(return_departure_time AS STRING), '')
   ))) AS flight_itinerary_key,
 
   *

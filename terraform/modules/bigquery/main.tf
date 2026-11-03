@@ -63,18 +63,44 @@ resource "google_storage_bucket_object" "hive_dummy_seed" {
   name   = "raw/source=google_flights/dt=2026-01-01/seed.jsonl"
   bucket = var.raw_bucket_name
   content = jsonencode({
-    source                  = "init"
-    round_trip_price        = 0.0
-    from_airport            = "XXX"
-    to_airport              = "YYY"
-    outbound_airline        = "None"
-    outbound_date           = "2026-01-01"
-    outbound_departure_time = "00:00"
-    outbound_duration       = 0
-    return_date             = "2026-01-01"
-    return_departure_time   = "00:00"
-    return_duration         = 0
-    _query_meta             = {}
+    type     = "seed"
+    price    = 0.0
+    airlines = ["None"]
+    flights = [
+      {
+        from_airport = {
+          name = "None"
+          code = "XXX"
+        }
+        to_airport = {
+          name = "None"
+          code = "YYY"
+        }
+        departure = {
+          date = [2026, 1, 1]
+          time = [0, 0]
+        }
+        arrival = {
+          date = [2026, 1, 1]
+          time = [0, 0]
+        }
+        duration   = 0
+        plane_type = "None"
+      }
+    ]
+    carbon = {
+      typical_on_route = 0
+      emission         = 0
+    }
+    _query_meta = {
+      outbound_date = "2026-01-01"
+      return_date   = "2026-01-01"
+      origin        = "XXX"
+      destination   = "YYY"
+      trip          = "round-trip"
+      currency      = "EUR"
+      seat          = "economy"
+    }
   })
 }
 
@@ -92,9 +118,10 @@ resource "google_bigquery_table" "table" {
   ]
 
   external_data_configuration {
-    autodetect    = false
-    source_format = "NEWLINE_DELIMITED_JSON"
-    connection_id = google_bigquery_connection.biglake_connection.name
+    autodetect            = false
+    source_format         = "NEWLINE_DELIMITED_JSON"
+    connection_id         = google_bigquery_connection.biglake_connection.name
+    ignore_unknown_values = true
 
     # Point to the source=google_flights subfolder so hive partitioning works accurately
     source_uris = [
@@ -112,64 +139,95 @@ resource "google_bigquery_table" "table" {
   schema = <<EOF
 [
   {
-    "name": "source",
+    "name": "type",
     "type": "STRING",
     "mode": "NULLABLE"
   },
   {
-    "name": "round_trip_price",
+    "name": "price",
     "type": "FLOAT",
     "mode": "NULLABLE"
   },
   {
-    "name": "from_airport",
+    "name": "airlines",
     "type": "STRING",
-    "mode": "NULLABLE"
+    "mode": "REPEATED"
   },
   {
-    "name": "to_airport",
-    "type": "STRING",
-    "mode": "NULLABLE"
+    "name": "flights",
+    "type": "RECORD",
+    "mode": "REPEATED",
+    "fields": [
+      {
+        "name": "from_airport",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "name", "type": "STRING", "mode": "NULLABLE" },
+          { "name": "code", "type": "STRING", "mode": "NULLABLE" }
+        ]
+      },
+      {
+        "name": "to_airport",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "name", "type": "STRING", "mode": "NULLABLE" },
+          { "name": "code", "type": "STRING", "mode": "NULLABLE" }
+        ]
+      },
+      {
+        "name": "departure",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "date", "type": "INTEGER", "mode": "REPEATED" },
+          { "name": "time", "type": "INTEGER", "mode": "REPEATED" }
+        ]
+      },
+      {
+        "name": "arrival",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "date", "type": "INTEGER", "mode": "REPEATED" },
+          { "name": "time", "type": "INTEGER", "mode": "REPEATED" }
+        ]
+      },
+      {
+        "name": "duration",
+        "type": "INTEGER",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "plane_type",
+        "type": "STRING",
+        "mode": "NULLABLE"
+      }
+    ]
   },
   {
-    "name": "outbound_airline",
-    "type": "STRING",
-    "mode": "NULLABLE"
-  },
-  {
-    "name": "outbound_date",
-    "type": "STRING",
-    "mode": "NULLABLE"
-  },
-  {
-    "name": "outbound_departure_time",
-    "type": "STRING",
-    "mode": "NULLABLE"
-  },
-  {
-    "name": "outbound_duration",
-    "type": "INTEGER",
-    "mode": "NULLABLE"
-  },
-  {
-    "name": "return_date",
-    "type": "STRING",
-    "mode": "NULLABLE"
-  },
-  {
-    "name": "return_departure_time",
-    "type": "STRING",
-    "mode": "NULLABLE"
-  },
-  {
-    "name": "return_duration",
-    "type": "INTEGER",
-    "mode": "NULLABLE"
+    "name": "carbon",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      { "name": "typical_on_route", "type": "INTEGER", "mode": "NULLABLE" },
+      { "name": "emission", "type": "INTEGER", "mode": "NULLABLE" }
+    ]
   },
   {
     "name": "_query_meta",
-    "type": "JSON",
-    "mode": "NULLABLE"
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      { "name": "outbound_date", "type": "STRING", "mode": "NULLABLE" },
+      { "name": "return_date", "type": "STRING", "mode": "NULLABLE" },
+      { "name": "origin", "type": "STRING", "mode": "NULLABLE" },
+      { "name": "destination", "type": "STRING", "mode": "NULLABLE" },
+      { "name": "trip", "type": "STRING", "mode": "NULLABLE" },
+      { "name": "currency", "type": "STRING", "mode": "NULLABLE" },
+      { "name": "seat", "type": "STRING", "mode": "NULLABLE" }
+    ]
   },
   {
     "name": "dt",
