@@ -1,0 +1,5 @@
+defaultProject: serverless-data-pipeline-111
+defaultLocation: europe-west1
+defaultDataset: flight_marts
+defaultAssertionDataset: flight_assertions
+dataformCoreVersion: 3.0.0

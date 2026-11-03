@@ -26,16 +26,26 @@ resource "google_project_iam_member" "workflow_logging" {
   member  = "serviceAccount:${google_service_account.workflow_sa.email}"
 }
 
+resource "google_project_iam_member" "workflow_dataform_editor" {
+  project = var.project_id
+  role    = "roles/dataform.editor"
+  member  = "serviceAccount:${google_service_account.workflow_sa.email}"
+}
+
 resource "google_workflows_workflow" "pipeline_workflow" {
-  name            = var.workflow_name
-  region          = var.region
-  project         = var.project_id
-  description     = "Orchestrates flight data scraping and ingestion into GCS"
-  service_account = google_service_account.workflow_sa.email
-  call_log_level  = "LOG_ALL_CALLS"
+  name                = var.workflow_name
+  region              = var.region
+  project             = var.project_id
+  description         = "Orchestrates flight data scraping and ingestion into GCS"
+  service_account     = google_service_account.workflow_sa.email
+  call_log_level      = "LOG_ALL_CALLS"
+  deletion_protection = false
 
   source_contents = templatefile("${path.module}/workflow.yaml", {
-    function_uri = var.function_uri
+    function_uri       = var.function_uri
+    project_id         = var.project_id
+    region             = var.region
+    dataform_repo_name = var.dataform_repo_name
   })
 
   depends_on = [

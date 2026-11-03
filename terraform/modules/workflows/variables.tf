@@ -27,3 +27,8 @@ variable "workflow_sa_name" {
   description = "The name of the workflow service account."
   type        = string
 }
+
+variable "dataform_repo_name" {
+  description = "The name of the Dataform repository to invoke"
+  type        = string
+}

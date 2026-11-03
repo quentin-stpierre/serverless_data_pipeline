@@ -9,5 +9,28 @@ main:
           auth:
             type: OIDC
         result: scrape_result
+
+    - compile_dataform:
+        call: http.post
+        args:
+          url: https://dataform.googleapis.com/v1beta1/projects/${project_id}/locations/${region}/repositories/${dataform_repo_name}/compilationResults
+          auth:
+            type: OAuth2
+          body:
+            gitCommitish: "main"
+        result: compilation_result
+
+    - invoke_dataform:
+        call: http.post
+        args:
+          url: https://dataform.googleapis.com/v1beta1/projects/${project_id}/locations/${region}/repositories/${dataform_repo_name}/workflowInvocations
+          auth:
+            type: OAuth2
+          body:
+            compilationResult: $${compilation_result.body.name}
+        result: invocation_result
+
     - return_result:
-        return: $${scrape_result.body}
+        return:
+          scraper_response: $${scrape_result.body}
+          dataform_invocation: $${invocation_result.body.name}

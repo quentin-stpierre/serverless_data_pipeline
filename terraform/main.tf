@@ -17,6 +17,8 @@ resource "google_project_service" "services" {
     "workflows.googleapis.com",
     "cloudscheduler.googleapis.com",
     "monitoring.googleapis.com",
+    "dataform.googleapis.com",
+    "secretmanager.googleapis.com",
   ])
   project = google_project.project.project_id
   service = each.key
@@ -40,15 +42,26 @@ module "scheduler" {
 module "workflows" {
   source = "./modules/workflows"
 
-  project_id    = google_project.project.project_id
-  region        = var.region
-  function_uri  = module.cloud_function.function_uri
-  function_name = module.cloud_function.function_name
+  project_id         = google_project.project.project_id
+  region             = var.region
+  function_uri       = module.cloud_function.function_uri
+  function_name      = module.cloud_function.function_name
+  dataform_repo_name = module.dataform.repository_name
 
   workflow_sa_name = var.workflow_sa_name
   workflow_name    = var.flight_workflow_name
 
-  depends_on = [google_project_service.services, module.cloud_function]
+  depends_on = [google_project_service.services, module.cloud_function, module.dataform]
+}
+
+module "dataform" {
+  source = "./modules/dataform"
+
+  project_id         = google_project.project.project_id
+  region             = var.region
+  git_repository_url = "https://github.com/${var.github_owner}/${var.github_repo}.git"
+
+  depends_on = [google_project_service.services, module.bigquery]
 }
 
 module "cloud_function" {

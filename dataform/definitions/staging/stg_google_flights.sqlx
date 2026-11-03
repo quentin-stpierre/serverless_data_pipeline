@@ -1,0 +1,52 @@
+config {
+  type: "view",
+  schema: "flight_staging",
+  description: "Silver staging view: clean datatypes, unnest JSON metadata, and generate itinerary surrogate keys"
+}
+
+WITH raw_source AS (
+  SELECT
+    -- Hive partition column from GCS path (dt=YYYY-MM-DD)
+    CAST(dt AS DATE) AS scraped_at_date,
+
+    -- Itinerary Dimensions
+    TRIM(from_airport) AS origin_airport,
+    TRIM(to_airport) AS destination_airport,
+    CAST(outbound_date AS DATE) AS outbound_date,
+    CAST(return_date AS DATE) AS return_date,
+    TRIM(outbound_airline) AS airlines,
+    PARSE_TIME('%H:%M', outbound_departure_time) AS outbound_departure_time,
+    CAST(outbound_duration AS INT64) AS outbound_duration_mins,
+    PARSE_TIME('%H:%M', return_departure_time) AS return_departure_time,
+    CAST(return_duration AS INT64) AS return_duration_mins,
+
+    -- Metrics
+    CAST(round_trip_price AS NUMERIC) AS price,
+
+    -- Unnest query metadata
+    COALESCE(JSON_VALUE(_query_meta, '$.seat'), 'economy') AS seat_class,
+    COALESCE(JSON_VALUE(_query_meta, '$.currency'), 'EUR') AS currency,
+    COALESCE(JSON_VALUE(_query_meta, '$.trip'), 'round-trip') AS trip_type,
+
+    source AS data_source
+  FROM
+    ${ref("ext_google_flights")}
+  WHERE
+    source != 'init'
+)
+
+SELECT
+  -- Deterministic surrogate key identifying unique physical flight itineraries
+  TO_HEX(MD5(CONCAT(
+    origin_airport, '|',
+    destination_airport, '|',
+    outbound_date, '|',
+    return_date, '|',
+    airlines, '|',
+    outbound_departure_time, '|',
+    return_departure_time
+  ))) AS flight_itinerary_key,
+
+  *
+FROM
+  raw_source

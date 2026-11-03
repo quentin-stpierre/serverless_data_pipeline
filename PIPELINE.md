@@ -87,12 +87,14 @@ The pipeline follows a modern **ELT (Extract, Load, Transform)** pattern on Goog
   - Object versioning enabled to prevent accidental overwrites.
   - 90-day automatic deletion lifecycle rule to optimize storage costs.
 
-### Step 5: Transformations & Business Logic (BigQuery & Dataform) *(Target State)*
-- **BigQuery:** Creates an external table over `gs://<RAW_DATA_BUCKET>/raw/source=google_flights/*` using Hive partitioning (`dt` column).
-- **Dataform Layers:**
-  1. `raw_layer`: Flattens nested JSON, casts datatypes, and deduplicates flights based on flight number, departure time, and scrape timestamp.
-  2. `staging`: Normalizes schemas so multiple scrapers (e.g. Google Flights, Skyscanner, Bright Data) share identical schema columns.
-  3. `marts`: Evaluates time-series price movements, computes minimum and average prices per route/date combination, and flags sudden price drops.
+### Step 5: Transformations & Business Logic (BigQuery & Dataform)
+- **BigLake External Table:** `raw_flight_data.ext_google_flights` maps directly over `gs://<RAW_DATA_BUCKET>/raw/source=google_flights/*` using Hive partitioning (`dt` column).
+- **Dataform Medallion Architecture:**
+  1. **Sources (`declarations.sqlx`):** Declares `ext_google_flights` in the `raw_flight_data` dataset.
+  2. **Silver Staging View (`stg_google_flights.sqlx` in `flight_staging`):** Unnests `_query_meta` JSON, parses timestamps/dates into strict BigQuery types (`DATE`, `TIME`, `NUMERIC`), and generates a deterministic `flight_itinerary_key` using MD5 hashing.
+  3. **Gold Dimension Table (`dim_flight_itinerary.sqlx` in `flight_marts`):** Incremental table storing unique flight itineraries (clustered by `origin_airport`, `destination_airport`, and `airlines`).
+  4. **Gold Fact Table (`fct_flight_prices.sqlx` in `flight_marts`):** Incremental time-series price observations partitioned by `scraped_at_date`. Computes `days_to_departure` and prevents duplicate runs via unique `observation_id`.
+- **Workflow Orchestration:** Cloud Workflows automatically compiles and invokes the Dataform repository via the Dataform API immediately after the scraper completes.
 
 ---
 

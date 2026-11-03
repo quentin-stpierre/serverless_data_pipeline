@@ -58,8 +58,7 @@ resource "google_cloudbuild_trigger" "terraform_plan_trigger" {
     owner = var.github_owner
     name  = var.github_repo
     pull_request {
-      branch          = "^main$"
-      comment_control = "COMMENTS_DISABLED"
+      branch = "^main$"
     }
   }
 

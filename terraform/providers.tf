@@ -5,6 +5,10 @@ terraform {
       source  = "hashicorp/google"
       version = ">= 4.0"
     }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = ">= 4.0"
+    }
     archive = {
       source  = "hashicorp/archive"
       version = ">= 2.0"
@@ -21,5 +25,9 @@ terraform {
 }
 
 provider "google" {
+  region = var.region
+}
+
+provider "google-beta" {
   region = var.region
 }

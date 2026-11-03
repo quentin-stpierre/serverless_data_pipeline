@@ -10,6 +10,10 @@ data "archive_file" "function_zip" {
   type        = "zip"
   source_dir  = "${path.module}/../../../functions/fetch_flights"
   output_path = "${path.module}/fetch_flights.zip"
+  excludes = [
+    ".venv",
+    "__pycache__"
+  ]
 }
 
 resource "google_storage_bucket_object" "function_zip_object" {
