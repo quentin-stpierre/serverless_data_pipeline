@@ -17,7 +17,7 @@ main:
           auth:
             type: OAuth2
           body:
-            gitCommitish: "main"
+            gitCommitish: "flight-tracker"
         result: compilation_result
 
     - invoke_dataform:
