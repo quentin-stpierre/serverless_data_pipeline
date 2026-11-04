@@ -10,7 +10,7 @@ folder_id       = "501022756737"
 scheduler_sa_name = "flights-scheduler-sa"
 flight_searches = {
   canada_july = {
-    schedule           = "0 9 * * 1,4"
+    schedule           = "0 8 */2 * *"
     origin             = "BRU"
     destination        = "YUL"
     start_date         = "2027-07-01"
@@ -20,7 +20,7 @@ flight_searches = {
     seat               = "economy"
   },
   guatemala_april = {
-    schedule           = "0 10 * * 2,5"
+    schedule           = "0 8 */2 * *"
     origin             = "BRU"
     destination        = "GUA"
     start_date         = "2027-04-10"
