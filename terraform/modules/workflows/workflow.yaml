@@ -18,6 +18,9 @@ main:
             type: OAuth2
           body:
             gitCommitish: "flight-tracker"
+            codeCompilationConfig:
+              vars:
+                trip_type: $${default(map.get(args, "trip_type"), "")}
         result: compilation_result
 
     - invoke_dataform:

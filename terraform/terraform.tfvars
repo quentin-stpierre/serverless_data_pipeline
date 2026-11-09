@@ -9,13 +9,14 @@ folder_id       = "501022756737"
 # Cloud Scheduler & Flight Targets
 scheduler_sa_name = "flights-scheduler-sa"
 flight_searches = {
-  canada_july = {
+  canada = {
     schedule           = "0 8 */2 * *"
     origin             = "BRU"
     destination        = "YUL"
     start_date         = "2027-07-01"
     trip_length        = 24
     flexibility_window = 2
+    trip_type          = "round-trip"
     currency           = "EUR"
     seat               = "economy"
   }

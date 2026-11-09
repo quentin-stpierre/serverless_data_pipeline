@@ -15,6 +15,7 @@ SELECT DISTINCT
   outbound_date,
   return_date,
   airlines,
+  trip_type,
   outbound_departure_time,
   outbound_duration_mins,
   return_departure_time,

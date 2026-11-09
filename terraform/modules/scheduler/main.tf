@@ -35,6 +35,7 @@ resource "google_cloud_scheduler_job" "flight_pipeline_triggers" {
         start_date         = each.value.start_date
         trip_length        = each.value.trip_length
         flexibility_window = each.value.flexibility_window
+        trip_type          = each.value.trip_type
         currency           = each.value.currency
         seat               = each.value.seat
         adults             = each.value.adults

@@ -13,7 +13,7 @@ WITH raw_source AS (
     COALESCE(flights[SAFE_OFFSET(0)].from_airport.code, _query_meta.origin) AS origin_airport,
     COALESCE(flights[SAFE_OFFSET(0)].to_airport.code, _query_meta.destination) AS destination_airport,
     PARSE_DATE('%Y-%m-%d', _query_meta.outbound_date) AS outbound_date,
-    PARSE_DATE('%Y-%m-%d', _query_meta.return_date) AS return_date,
+    SAFE.PARSE_DATE('%Y-%m-%d', _query_meta.return_date) AS return_date,
     ARRAY_TO_STRING(airlines, ', ') AS airlines,
 
     -- Construct departure time (hours and minutes)
@@ -38,6 +38,10 @@ WITH raw_source AS (
     ${ref("ext_google_flights")}
   WHERE
     type != 'seed'
+    AND (
+      '${dataform.projectConfig.vars.trip_type}' = ''
+      OR COALESCE(_query_meta.trip, 'round-trip') = '${dataform.projectConfig.vars.trip_type}'
+    )
 )
 
 SELECT
@@ -46,8 +50,9 @@ SELECT
     origin_airport, '|',
     destination_airport, '|',
     CAST(outbound_date AS STRING), '|',
-    CAST(return_date AS STRING), '|',
+    COALESCE(CAST(return_date AS STRING), ''), '|',
     airlines, '|',
+    trip_type, '|',
     COALESCE(CAST(outbound_departure_time AS STRING), ''), '|',
     COALESCE(CAST(return_departure_time AS STRING), '')
   ))) AS flight_itinerary_key,
