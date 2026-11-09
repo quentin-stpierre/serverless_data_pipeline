@@ -18,16 +18,6 @@ flight_searches = {
     flexibility_window = 2
     currency           = "EUR"
     seat               = "economy"
-  },
-  guatemala_april = {
-    schedule           = "0 8 */2 * *"
-    origin             = "BRU"
-    destination        = "GUA"
-    start_date         = "2027-04-10"
-    trip_length        = 18
-    flexibility_window = 1
-    currency           = "EUR"
-    seat               = "economy"
   }
 }
 
