@@ -4,4 +4,6 @@ defaultDataset: flight_marts
 defaultAssertionDataset: flight_assertions
 dataformCoreVersion: 3.0.0
 vars:
+  search_name: ""
   trip_type: ""
+  target_price: ""

@@ -32,6 +32,18 @@ resource "google_project_iam_member" "workflow_dataform_editor" {
   member  = "serviceAccount:${google_service_account.workflow_sa.email}"
 }
 
+resource "google_project_iam_member" "workflow_bigquery_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.workflow_sa.email}"
+}
+
+resource "google_project_iam_member" "workflow_bigquery_data_viewer" {
+  project = var.project_id
+  role    = "roles/bigquery.dataViewer"
+  member  = "serviceAccount:${google_service_account.workflow_sa.email}"
+}
+
 resource "google_workflows_workflow" "pipeline_workflow" {
   name                = var.workflow_name
   region              = var.region

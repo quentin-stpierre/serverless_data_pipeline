@@ -62,6 +62,7 @@ def fetch_flights_for_date_pairs(
     currency: str = "EUR",
     adults: int = 1,
     max_stops: int = 0,
+    search_name: str = "default",
 ) -> list[dict]:
     """Queries Google Flights for each date pair and returns all raw flight records."""
     integration = ConsentAwareFetchIntegration()
@@ -84,6 +85,7 @@ def fetch_flights_for_date_pairs(
             for flight in get_flights(rt_query, integration=integration):
                 data = _to_serializable(flight)
                 data["_query_meta"] = {
+                    "search_name": search_name,
                     "outbound_date": outbound_date,
                     "return_date": return_date,
                     "origin": origin,
@@ -111,6 +113,7 @@ def fetch_flights_for_date_pairs(
             for flight in get_flights(ret_query, integration=integration):
                 data = _to_serializable(flight)
                 data["_query_meta"] = {
+                    "search_name": search_name,
                     "outbound_date": outbound_date,
                     "return_date": return_date,
                     "origin": destination,

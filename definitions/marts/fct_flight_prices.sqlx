@@ -5,7 +5,7 @@ config {
   description: "Gold fact table: time-series flight price observations across scrape runs",
   bigquery: {
     partitionBy: "scraped_at_date",
-    clusterBy: ["flight_itinerary_key", "price"]
+    clusterBy: ["search_name", "flight_itinerary_key", "price"]
   }
 }
 
@@ -14,6 +14,7 @@ WITH latest_staged AS (
     -- Deterministic observation key preventing duplicate entries if scraped twice on the same day
     TO_HEX(MD5(CONCAT(flight_itinerary_key, '|', CAST(scraped_at_date AS STRING)))) AS observation_id,
     flight_itinerary_key,
+    search_name,
     scraped_at_date,
     outbound_date,
     return_date,

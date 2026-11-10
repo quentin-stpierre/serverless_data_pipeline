@@ -4,12 +4,13 @@ config {
   uniqueKey: ["flight_itinerary_key"],
   description: "Gold dimension table: unique flight routing itineraries with departure times and airlines",
   bigquery: {
-    clusterBy: ["origin_airport", "destination_airport", "airlines"]
+    clusterBy: ["search_name", "origin_airport", "destination_airport", "airlines"]
   }
 }
 
 SELECT DISTINCT
   flight_itinerary_key,
+  search_name,
   origin_airport,
   destination_airport,
   outbound_date,

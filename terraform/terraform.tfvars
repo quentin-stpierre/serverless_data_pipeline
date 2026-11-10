@@ -17,6 +17,7 @@ flight_searches = {
     trip_length        = 24
     flexibility_window = 2
     trip_type          = "round-trip"
+    target_price       = 600
     currency           = "EUR"
     seat               = "economy"
   }

@@ -68,6 +68,7 @@ variable "flight_searches" {
     trip_length        = number
     flexibility_window = number
     trip_type          = optional(string, "")
+    target_price       = optional(number, null)
     currency           = optional(string, "EUR")
     seat               = optional(string, "economy")
     adults             = optional(number, 1)

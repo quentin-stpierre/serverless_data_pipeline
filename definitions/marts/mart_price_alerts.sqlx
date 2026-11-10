@@ -1,0 +1,81 @@
+config {
+  type: "table",
+  schema: "flight_marts",
+  description: "Gold alert table: evaluates whether the latest scraped flight prices reached a new historical low or beat the target price threshold"
+}
+
+WITH current_run AS (
+  SELECT
+    f.search_name,
+    f.price AS current_price,
+    f.currency,
+    f.outbound_date,
+    f.return_date,
+    d.origin_airport,
+    d.destination_airport,
+    d.airlines,
+    d.outbound_departure_time,
+    f.trip_type,
+    SAFE_CAST('${dataform.projectConfig.vars.target_price}' AS NUMERIC) AS target_price
+  FROM
+    ${ref("fct_flight_prices")} f
+  LEFT JOIN
+    ${ref("dim_flight_itinerary")} d
+    ON f.flight_itinerary_key = d.flight_itinerary_key
+  WHERE
+    f.scraped_at_date = CURRENT_DATE()
+    AND (
+      '${dataform.projectConfig.vars.search_name}' = ''
+      OR f.search_name = '${dataform.projectConfig.vars.search_name}'
+    )
+  QUALIFY
+    ROW_NUMBER() OVER (PARTITION BY f.search_name ORDER BY f.price ASC) = 1
+),
+
+historical AS (
+  SELECT
+    search_name,
+    MIN(price) AS prev_min_price
+  FROM
+    ${ref("fct_flight_prices")}
+  WHERE
+    scraped_at_date < CURRENT_DATE()
+  GROUP BY
+    search_name
+),
+
+evaluated AS (
+  SELECT
+    c.search_name,
+    c.origin_airport,
+    c.destination_airport,
+    c.outbound_date,
+    c.return_date,
+    c.airlines,
+    c.outbound_departure_time,
+    c.trip_type,
+    c.current_price,
+    c.currency,
+    h.prev_min_price,
+    c.target_price,
+    (h.prev_min_price IS NOT NULL AND c.current_price < h.prev_min_price) AS is_new_historical_low,
+    (c.target_price IS NOT NULL AND c.current_price <= c.target_price) AS is_below_target
+  FROM
+    current_run c
+  LEFT JOIN
+    historical h
+    ON c.search_name = h.search_name
+)
+
+SELECT
+  *,
+  (is_new_historical_low OR is_below_target) AS should_alert,
+  CASE
+    WHEN is_new_historical_low AND is_below_target THEN 'NEW_HISTORICAL_LOW_AND_BELOW_TARGET'
+    WHEN is_new_historical_low THEN 'NEW_HISTORICAL_LOW'
+    WHEN is_below_target THEN 'BELOW_TARGET_PRICE'
+    ELSE 'NONE'
+  END AS alert_reason,
+  CURRENT_TIMESTAMP() AS evaluated_at
+FROM
+  evaluated

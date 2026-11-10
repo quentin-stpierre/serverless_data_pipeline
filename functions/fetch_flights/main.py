@@ -12,6 +12,7 @@ def fetch_flights(request):
     request_json = request.get_json(silent=True) or {}
 
     # Extract query parameters with fallbacks
+    search_name = request_json.get("search_name", "default") or "default"
     start_date = request_json.get("start_date", "2027-06-01")
     trip_length = int(request_json.get("trip_length", 24))
     flexibility_window = int(request_json.get("flexibility_window", 1))
@@ -38,6 +39,7 @@ def fetch_flights(request):
         currency=currency,
         adults=adults,
         max_stops=max_stops,
+        search_name=search_name,
     )
 
     bucket_name = os.environ.get("RAW_DATA_BUCKET")
@@ -51,6 +53,7 @@ def fetch_flights(request):
         "records_count": len(results),
         "gcs_uri": gcs_uri,
         "parameters": {
+            "search_name": search_name,
             "origin": origin,
             "destination": destination,
             "start_date": start_date,

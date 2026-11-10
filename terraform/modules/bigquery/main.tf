@@ -93,6 +93,7 @@ resource "google_storage_bucket_object" "hive_dummy_seed" {
       emission         = 0
     }
     _query_meta = {
+      search_name   = "seed"
       outbound_date = "2026-01-01"
       return_date   = "2026-01-01"
       origin        = "XXX"
@@ -220,6 +221,7 @@ resource "google_bigquery_table" "table" {
     "type": "RECORD",
     "mode": "NULLABLE",
     "fields": [
+      { "name": "search_name", "type": "STRING", "mode": "NULLABLE" },
       { "name": "outbound_date", "type": "STRING", "mode": "NULLABLE" },
       { "name": "return_date", "type": "STRING", "mode": "NULLABLE" },
       { "name": "origin", "type": "STRING", "mode": "NULLABLE" },

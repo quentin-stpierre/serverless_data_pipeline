@@ -9,6 +9,9 @@ WITH raw_source AS (
     -- Hive partition column from GCS path (dt=YYYY-MM-DD)
     CAST(dt AS DATE) AS scraped_at_date,
 
+    -- Search configuration identifier from terraform.tfvars
+    COALESCE(_query_meta.search_name, 'default') AS search_name,
+
     -- Extract itinerary dimensions from flights array and query metadata
     COALESCE(flights[SAFE_OFFSET(0)].from_airport.code, _query_meta.origin) AS origin_airport,
     COALESCE(flights[SAFE_OFFSET(0)].to_airport.code, _query_meta.destination) AS destination_airport,
@@ -39,6 +42,10 @@ WITH raw_source AS (
   WHERE
     type != 'seed'
     AND (
+      '${dataform.projectConfig.vars.search_name}' = ''
+      OR COALESCE(_query_meta.search_name, 'default') = '${dataform.projectConfig.vars.search_name}'
+    )
+    AND (
       '${dataform.projectConfig.vars.trip_type}' = ''
       OR COALESCE(_query_meta.trip, 'round-trip') = '${dataform.projectConfig.vars.trip_type}'
     )
@@ -47,6 +54,7 @@ WITH raw_source AS (
 SELECT
   -- Deterministic surrogate key identifying unique physical flight itineraries
   TO_HEX(MD5(CONCAT(
+    search_name, '|',
     origin_airport, '|',
     destination_airport, '|',
     CAST(outbound_date AS STRING), '|',

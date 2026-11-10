@@ -30,12 +30,14 @@ resource "google_cloud_scheduler_job" "flight_pipeline_triggers" {
     http_method = "POST"
     body = base64encode(jsonencode({
       argument = jsonencode({
+        search_name        = each.key
         origin             = each.value.origin
         destination        = each.value.destination
         start_date         = each.value.start_date
         trip_length        = each.value.trip_length
         flexibility_window = each.value.flexibility_window
         trip_type          = each.value.trip_type
+        target_price       = each.value.target_price
         currency           = each.value.currency
         seat               = each.value.seat
         adults             = each.value.adults
