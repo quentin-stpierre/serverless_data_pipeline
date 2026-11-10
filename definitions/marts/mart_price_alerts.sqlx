@@ -15,6 +15,9 @@ WITH current_run AS (
     d.destination_airport,
     d.airlines,
     d.outbound_departure_time,
+    d.outbound_duration_mins,
+    d.return_departure_time,
+    d.return_duration_mins,
     f.trip_type,
     SAFE_CAST('${dataform.projectConfig.vars.target_price}' AS NUMERIC) AS target_price
   FROM
@@ -53,6 +56,9 @@ evaluated AS (
     c.return_date,
     c.airlines,
     c.outbound_departure_time,
+    c.outbound_duration_mins,
+    c.return_departure_time,
+    c.return_duration_mins,
     c.trip_type,
     c.current_price,
     c.currency,

@@ -51,7 +51,7 @@ resource "google_workflows_workflow" "pipeline_workflow" {
   description         = "Orchestrates flight data scraping and ingestion into GCS"
   service_account     = google_service_account.workflow_sa.email
   call_log_level      = "LOG_ALL_CALLS"
-  deletion_protection = false
+  deletion_protection = true
 
   source_contents = templatefile("${path.module}/workflow.yaml", {
     function_uri             = var.function_uri

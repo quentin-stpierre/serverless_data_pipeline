@@ -82,14 +82,17 @@ main:
                 CAST(outbound_date AS STRING) AS outbound_date,
                 COALESCE(CAST(return_date AS STRING), 'N/A') AS return_date,
                 airlines,
-                COALESCE(CAST(outbound_departure_time AS STRING), 'N/A') AS departure_time,
+                COALESCE(CAST(outbound_departure_time AS STRING), 'N/A') AS outbound_departure_time,
+                COALESCE(CAST(outbound_duration_mins AS STRING), 'N/A') AS outbound_duration_mins,
+                COALESCE(CAST(return_departure_time AS STRING), 'N/A') AS return_departure_time,
+                COALESCE(CAST(return_duration_mins AS STRING), 'N/A') AS return_duration_mins,
                 trip_type,
                 CAST(current_price AS STRING) AS current_price,
                 currency,
                 COALESCE(CAST(prev_min_price AS STRING), 'N/A') AS prev_min_price,
                 COALESCE(CAST(target_price AS STRING), 'N/A') AS target_price
               FROM `${project_id}.flight_marts.mart_price_alerts`
-              WHERE should_alert = TRUE
+              WHERE should_alert = TRUE AND search_name = '$${search_name}'
               LIMIT 1
         result: bq_result
 
@@ -115,11 +118,14 @@ main:
                       return_date: $${row[5].v}
                       airlines: $${row[6].v}
                       departure_time: $${row[7].v}
-                      trip_type: $${row[8].v}
-                      current_price: $${row[9].v}
-                      currency: $${row[10].v}
-                      previous_min_price: $${row[11].v}
-                      target_price: $${row[12].v}
+                      outbound_duration_mins: $${row[8].v}
+                      return_departure_time: $${row[9].v}
+                      return_duration_mins: $${row[10].v}
+                      trip_type: $${row[11].v}
+                      current_price: $${row[12].v}
+                      currency: $${row[13].v}
+                      previous_min_price: $${row[14].v}
+                      target_price: $${row[15].v}
 
     - return_result:
         return:

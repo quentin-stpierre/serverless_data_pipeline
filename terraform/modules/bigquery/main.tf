@@ -3,7 +3,7 @@ resource "google_bigquery_dataset" "dataset" {
   dataset_id                 = var.dataset_id
   description                = "Dataset containing raw flight pricing external tables"
   location                   = var.region
-  delete_contents_on_destroy = true
+  delete_contents_on_destroy = false
 
   labels = {
     env     = "dev"
@@ -17,7 +17,7 @@ resource "google_bigquery_dataset" "staging" {
   dataset_id                 = "flight_staging"
   description                = "Silver layer: cleaned and normalized staging views for flight data"
   location                   = var.region
-  delete_contents_on_destroy = true
+  delete_contents_on_destroy = false
 
   labels = {
     env     = "dev"
@@ -31,7 +31,7 @@ resource "google_bigquery_dataset" "marts" {
   dataset_id                 = "flight_marts"
   description                = "Gold layer: dimension and fact tables for flight analytics"
   location                   = var.region
-  delete_contents_on_destroy = true
+  delete_contents_on_destroy = false
 
   labels = {
     env     = "dev"
@@ -111,7 +111,7 @@ resource "google_bigquery_table" "table" {
   dataset_id          = google_bigquery_dataset.dataset.dataset_id
   table_id            = var.table_id
   description         = "External table pointing to raw JSONL flight data in GCS."
-  deletion_protection = false
+  deletion_protection = true
 
   depends_on = [
     google_storage_bucket_iam_member.biglake_gcs_reader,

@@ -47,19 +47,22 @@ resource "google_monitoring_alert_policy" "flight_price_low_policy" {
       filter = "resource.type = \"workflows.googleapis.com/Workflow\" AND resource.labels.workflow_id = \"${var.workflow_name}\" AND jsonPayload.event_type = \"FLIGHT_PRICE_LOW_ALERT\""
 
       label_extractors = {
-        search_name        = "EXTRACT(jsonPayload.search_name)"
-        alert_reason       = "EXTRACT(jsonPayload.alert_reason)"
-        origin             = "EXTRACT(jsonPayload.origin)"
-        destination        = "EXTRACT(jsonPayload.destination)"
-        outbound_date      = "EXTRACT(jsonPayload.outbound_date)"
-        return_date        = "EXTRACT(jsonPayload.return_date)"
-        airlines           = "EXTRACT(jsonPayload.airlines)"
-        departure_time     = "EXTRACT(jsonPayload.departure_time)"
-        trip_type          = "EXTRACT(jsonPayload.trip_type)"
-        current_price      = "EXTRACT(jsonPayload.current_price)"
-        currency           = "EXTRACT(jsonPayload.currency)"
-        previous_min_price = "EXTRACT(jsonPayload.previous_min_price)"
-        target_price       = "EXTRACT(jsonPayload.target_price)"
+        search_name            = "EXTRACT(jsonPayload.search_name)"
+        alert_reason           = "EXTRACT(jsonPayload.alert_reason)"
+        origin                 = "EXTRACT(jsonPayload.origin)"
+        destination            = "EXTRACT(jsonPayload.destination)"
+        outbound_date          = "EXTRACT(jsonPayload.outbound_date)"
+        return_date            = "EXTRACT(jsonPayload.return_date)"
+        airlines               = "EXTRACT(jsonPayload.airlines)"
+        departure_time         = "EXTRACT(jsonPayload.departure_time)"
+        outbound_duration_mins = "EXTRACT(jsonPayload.outbound_duration_mins)"
+        return_departure_time  = "EXTRACT(jsonPayload.return_departure_time)"
+        return_duration_mins   = "EXTRACT(jsonPayload.return_duration_mins)"
+        trip_type              = "EXTRACT(jsonPayload.trip_type)"
+        current_price          = "EXTRACT(jsonPayload.current_price)"
+        currency               = "EXTRACT(jsonPayload.currency)"
+        previous_min_price     = "EXTRACT(jsonPayload.previous_min_price)"
+        target_price           = "EXTRACT(jsonPayload.target_price)"
       }
     }
   }
@@ -83,8 +86,8 @@ resource "google_monitoring_alert_policy" "flight_price_low_policy" {
       * **Current Lowest Price:** **$${log.extracted_label.current_price} $${log.extracted_label.currency}**
       * **Previous Historical Low:** `$${log.extracted_label.previous_min_price} $${log.extracted_label.currency}`
       * **Target Price Threshold:** `$${log.extracted_label.target_price} $${log.extracted_label.currency}`
-      * **Outbound Date:** `$${log.extracted_label.outbound_date}` (Departs `$${log.extracted_label.departure_time}`)
-      * **Return Date:** `$${log.extracted_label.return_date}`
+      * **Outbound Leg:** `$${log.extracted_label.outbound_date}` (Departs `$${log.extracted_label.departure_time}`, Duration `$${log.extracted_label.outbound_duration_mins}` mins)
+      * **Return Leg:** `$${log.extracted_label.return_date}` (Departs `$${log.extracted_label.return_departure_time}`, Duration `$${log.extracted_label.return_duration_mins}` mins)
       * **Airlines:** `$${log.extracted_label.airlines}`
     EOT
   }

@@ -4,7 +4,7 @@ config {
   description: "Silver staging view: clean datatypes, unnest flight legs, and generate itinerary surrogate keys"
 }
 
-WITH raw_source AS (
+WITH base_records AS (
   SELECT
     -- Hive partition column from GCS path (dt=YYYY-MM-DD)
     CAST(dt AS DATE) AS scraped_at_date,
@@ -19,17 +19,13 @@ WITH raw_source AS (
     SAFE.PARSE_DATE('%Y-%m-%d', _query_meta.return_date) AS return_date,
     ARRAY_TO_STRING(airlines, ', ') AS airlines,
 
-    -- Construct departure time (hours and minutes)
+    -- Construct departure time (hours and minutes) and duration
     TIME(
       flights[SAFE_OFFSET(0)].departure.time[SAFE_OFFSET(0)],
       flights[SAFE_OFFSET(0)].departure.time[SAFE_OFFSET(1)],
       0
-    ) AS outbound_departure_time,
-    CAST(flights[SAFE_OFFSET(0)].duration AS INT64) AS outbound_duration_mins,
-
-    -- Return leg placeholder (for multi-leg or one-way tracking)
-    CAST(NULL AS TIME) AS return_departure_time,
-    CAST(NULL AS INT64) AS return_duration_mins,
+    ) AS leg_departure_time,
+    CAST(flights[SAFE_OFFSET(0)].duration AS INT64) AS leg_duration_mins,
 
     -- Price & Metadata
     CAST(price AS NUMERIC) AS price,
@@ -45,10 +41,99 @@ WITH raw_source AS (
       '${dataform.projectConfig.vars.search_name}' = ''
       OR COALESCE(_query_meta.search_name, 'default') = '${dataform.projectConfig.vars.search_name}'
     )
-    AND (
-      '${dataform.projectConfig.vars.trip_type}' = ''
-      OR COALESCE(_query_meta.trip, 'round-trip') = '${dataform.projectConfig.vars.trip_type}'
-    )
+),
+
+return_by_airline AS (
+  SELECT
+    scraped_at_date,
+    search_name,
+    origin_airport AS return_origin_airport,
+    destination_airport AS return_destination_airport,
+    outbound_date,
+    return_date,
+    airlines,
+    leg_departure_time AS return_departure_time,
+    leg_duration_mins AS return_duration_mins
+  FROM
+    base_records
+  WHERE
+    trip_type = 'one-way'
+  QUALIFY
+    ROW_NUMBER() OVER (
+      PARTITION BY scraped_at_date, search_name, origin_airport, destination_airport, outbound_date, return_date, airlines
+      ORDER BY price ASC
+    ) = 1
+),
+
+return_fallback AS (
+  SELECT
+    scraped_at_date,
+    search_name,
+    origin_airport AS return_origin_airport,
+    destination_airport AS return_destination_airport,
+    outbound_date,
+    return_date,
+    leg_departure_time AS return_departure_time,
+    leg_duration_mins AS return_duration_mins
+  FROM
+    base_records
+  WHERE
+    trip_type = 'one-way'
+  QUALIFY
+    ROW_NUMBER() OVER (
+      PARTITION BY scraped_at_date, search_name, origin_airport, destination_airport, outbound_date, return_date
+      ORDER BY price ASC
+    ) = 1
+),
+
+enriched_source AS (
+  SELECT
+    b.scraped_at_date,
+    b.search_name,
+    b.origin_airport,
+    b.destination_airport,
+    b.outbound_date,
+    b.return_date,
+    b.airlines,
+    b.leg_departure_time AS outbound_departure_time,
+    b.leg_duration_mins AS outbound_duration_mins,
+    CASE
+      WHEN b.trip_type = 'round-trip' THEN COALESCE(ra.return_departure_time, rf.return_departure_time)
+      ELSE CAST(NULL AS TIME)
+    END AS return_departure_time,
+    CASE
+      WHEN b.trip_type = 'round-trip' THEN COALESCE(ra.return_duration_mins, rf.return_duration_mins)
+      ELSE CAST(NULL AS INT64)
+    END AS return_duration_mins,
+    b.price,
+    b.seat_class,
+    b.currency,
+    b.trip_type,
+    b.data_source
+  FROM
+    base_records b
+  LEFT JOIN
+    return_by_airline ra
+    ON b.trip_type = 'round-trip'
+    AND b.scraped_at_date = ra.scraped_at_date
+    AND b.search_name = ra.search_name
+    AND b.outbound_date = ra.outbound_date
+    AND b.return_date = ra.return_date
+    AND b.destination_airport = ra.return_origin_airport
+    AND b.origin_airport = ra.return_destination_airport
+    AND b.airlines = ra.airlines
+  LEFT JOIN
+    return_fallback rf
+    ON b.trip_type = 'round-trip'
+    AND b.scraped_at_date = rf.scraped_at_date
+    AND b.search_name = rf.search_name
+    AND b.outbound_date = rf.outbound_date
+    AND b.return_date = rf.return_date
+    AND b.destination_airport = rf.return_origin_airport
+    AND b.origin_airport = rf.return_destination_airport
+  WHERE
+    '${dataform.projectConfig.vars.trip_type}' = ''
+    OR b.trip_type = '${dataform.projectConfig.vars.trip_type}'
 )
 
 SELECT
@@ -67,4 +152,4 @@ SELECT
 
   *
 FROM
-  raw_source
+  enriched_source
