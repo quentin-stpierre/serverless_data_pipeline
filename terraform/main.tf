@@ -48,20 +48,26 @@ module "workflows" {
   function_name            = module.cloud_function.function_name
   dataform_repo_name       = module.dataform.repository_name
   dataform_runner_sa_email = module.dataform.dataform_runner_sa_email
+  marts_dataset_id         = module.bigquery.marts_dataset_id
 
   workflow_sa_name = var.workflow_sa_name
   workflow_name    = var.flight_workflow_name
 
-  depends_on = [google_project_service.services, module.cloud_function, module.dataform]
+  depends_on = [google_project_service.services, module.cloud_function, module.dataform, module.bigquery]
 }
 
 module "dataform" {
   source = "./modules/dataform"
 
-  project_id         = google_project.project.project_id
-  region             = var.region
-  git_repository_url = "https://github.com/${var.github_owner}/${var.github_repo}.git"
-  workflow_sa_email  = "${var.workflow_sa_name}@${google_project.project.project_id}.iam.gserviceaccount.com"
+  project_id            = google_project.project.project_id
+  region                = var.region
+  git_repository_url    = "https://github.com/${var.github_owner}/${var.github_repo}.git"
+  workflow_sa_email     = "${var.workflow_sa_name}@${google_project.project.project_id}.iam.gserviceaccount.com"
+  raw_dataset_id        = module.bigquery.dataset_id
+  staging_dataset_id    = module.bigquery.staging_dataset_id
+  marts_dataset_id      = module.bigquery.marts_dataset_id
+  assertions_dataset_id = module.bigquery.assertions_dataset_id
+  biglake_connection_id = module.bigquery.biglake_connection_id
 
   depends_on = [google_project_service.services, module.bigquery]
 }

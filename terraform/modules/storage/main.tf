@@ -22,6 +22,6 @@ resource "google_storage_bucket" "raw_flights_data_bucket" {
 resource "google_storage_bucket_iam_member" "cloud_function_writer" {
   count  = var.cloud_function_sa_email != "" ? 1 : 0
   bucket = google_storage_bucket.raw_flights_data_bucket.name
-  role   = "roles/storage.objectUser"
+  role   = "roles/storage.objectCreator"
   member = "serviceAccount:${var.cloud_function_sa_email}"
 }

@@ -23,19 +23,6 @@ resource "google_secret_manager_secret_iam_member" "dataform_secret_accessor" {
   member    = google_project_service_identity.dataform_sa.member
 }
 
-# Grant Dataform service account BigQuery permissions to run queries and manage tables
-resource "google_project_iam_member" "dataform_bigquery_editor" {
-  project = var.project_id
-  role    = "roles/bigquery.dataEditor"
-  member  = google_project_service_identity.dataform_sa.member
-}
-
-resource "google_project_iam_member" "dataform_bigquery_job_user" {
-  project = var.project_id
-  role    = "roles/bigquery.jobUser"
-  member  = google_project_service_identity.dataform_sa.member
-}
-
 # Dedicated user-managed service account to execute Dataform SQL workflows
 resource "google_service_account" "dataform_runner" {
   account_id   = "flights-dataform-sa"
@@ -43,23 +30,42 @@ resource "google_service_account" "dataform_runner" {
   project      = var.project_id
 }
 
-# Grant BigQuery permissions to the custom execution service account
-resource "google_project_iam_member" "dataform_runner_bigquery_editor" {
-  project = var.project_id
-  role    = "roles/bigquery.dataEditor"
-  member  = "serviceAccount:${google_service_account.dataform_runner.email}"
-}
-
+# Grant job execution permission at project level (required to submit BigQuery jobs)
 resource "google_project_iam_member" "dataform_runner_bigquery_job_user" {
   project = var.project_id
   role    = "roles/bigquery.jobUser"
   member  = "serviceAccount:${google_service_account.dataform_runner.email}"
 }
 
-resource "google_project_iam_member" "dataform_runner_bigquery_connection_user" {
-  project = var.project_id
-  role    = "roles/bigquery.connectionUser"
-  member  = "serviceAccount:${google_service_account.dataform_runner.email}"
+# Read-only access to the raw dataset containing the external table
+resource "google_bigquery_dataset_iam_member" "dataform_runner_raw_viewer" {
+  project    = var.project_id
+  dataset_id = var.raw_dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${google_service_account.dataform_runner.email}"
+}
+
+# Editor access scoped strictly to the Dataform managed datasets (staging, marts, assertions)
+resource "google_bigquery_dataset_iam_member" "dataform_runner_dataset_editor" {
+  for_each = toset([
+    var.staging_dataset_id,
+    var.marts_dataset_id,
+    var.assertions_dataset_id,
+  ])
+
+  project    = var.project_id
+  dataset_id = each.key
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.dataform_runner.email}"
+}
+
+# Connection user access scoped strictly to the BigLake GCS connection
+resource "google_bigquery_connection_iam_member" "dataform_runner_bigquery_connection_user" {
+  project       = var.project_id
+  location      = var.region
+  connection_id = var.biglake_connection_id
+  role          = "roles/bigquery.connectionUser"
+  member        = "serviceAccount:${google_service_account.dataform_runner.email}"
 }
 
 # Allow Dataform Service Agent to generate tokens and act as the execution service account

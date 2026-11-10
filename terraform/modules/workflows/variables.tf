@@ -37,3 +37,8 @@ variable "dataform_runner_sa_email" {
   description = "The service account email used for Dataform invocations"
   type        = string
 }
+
+variable "marts_dataset_id" {
+  description = "The ID of the marts BigQuery dataset for low-price alert queries"
+  type        = string
+}

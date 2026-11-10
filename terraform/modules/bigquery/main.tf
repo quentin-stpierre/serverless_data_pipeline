@@ -40,6 +40,20 @@ resource "google_bigquery_dataset" "marts" {
   }
 }
 
+resource "google_bigquery_dataset" "assertions" {
+  project                    = var.project_id
+  dataset_id                 = "flight_assertions"
+  description                = "Dataform assertions dataset for flight data quality checks"
+  location                   = var.region
+  delete_contents_on_destroy = false
+
+  labels = {
+    env     = "dev"
+    project = "flights"
+    layer   = "assertions"
+  }
+}
+
 # Create a BigLake connection so BigQuery can read from GCS
 resource "google_bigquery_connection" "biglake_connection" {
   project       = var.project_id

@@ -36,7 +36,7 @@ WITH base_records AS (
   FROM
     ${ref("ext_google_flights")}
   WHERE
-    type != 'seed'
+    COALESCE(type, '') != 'seed'
     AND (
       '${dataform.projectConfig.vars.search_name}' = ''
       OR COALESCE(_query_meta.search_name, 'default') = '${dataform.projectConfig.vars.search_name}'

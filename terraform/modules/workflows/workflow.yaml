@@ -24,7 +24,7 @@ main:
           auth:
             type: OAuth2
           body:
-            gitCommitish: "flight-tracker"
+            gitCommitish: "main"
             codeCompilationConfig:
               vars:
                 search_name: $${search_name}
