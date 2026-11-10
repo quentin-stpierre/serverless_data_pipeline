@@ -9,8 +9,7 @@ This document provides a comprehensive technical overview of the serverless Extr
 The pipeline follows a modern **ELT (Extract, Load, Transform)** pattern on Google Cloud Platform:
 1. **Extract & Load:** Scrape raw, untransformed flight data (outbound round-trip options and return leg options) from Google Flights and immediately land it as JSON Lines (`.jsonl`) into Google Cloud Storage (GCS).
 2. **Transform (Medallion Architecture):** Ingest raw files into BigQuery via a BigLake External Table, where Dataform handles SQL transformations (return-leg enrichment, `trip_type` & `search_name` filtering, deduplication, and star-schema dimensional modeling).
-3. **Evaluate & Alert:** Dataform computes price-low metrics (`mart_price_alerts`) against historical lows and configurable target price thresholds; Cloud Workflows emits a structured alert log (`FLIGHT_PRICE_LOW_ALERT`) that triggers a Cloud Monitoring log-based email notification.
-
+3. **Evaluate & Alert:** Dataform computes price-low metrics (`mart_price_alerts`) against historical lows and configurable target price thresholds; Cloud Workflows emits a structured alert log (`FLIGHT_PRICE_LOW_ALERT`) that triggers a Cloud Monitoring log-based email notification..
 ```
 [Cloud Scheduler]
  (Cron triggers per search target in terraform.tfvars)
