@@ -1,0 +1,28 @@
+config {
+  type: "incremental",
+  schema: "flight_marts",
+  uniqueKey: ["flight_itinerary_key"],
+  description: "Gold dimension table: unique flight routing itineraries with departure times and airlines",
+  bigquery: {
+    clusterBy: ["search_name", "origin_airport", "destination_airport", "airlines"]
+  }
+}
+
+SELECT DISTINCT
+  flight_itinerary_key,
+  search_name,
+  origin_airport,
+  destination_airport,
+  outbound_date,
+  return_date,
+  airlines,
+  trip_type,
+  outbound_departure_time,
+  outbound_duration_mins,
+  return_departure_time,
+  return_duration_mins,
+  CURRENT_TIMESTAMP() AS first_seen_at
+FROM
+  ${ref("stg_google_flights")}
+
+${when(incremental(), `WHERE flight_itinerary_key NOT IN (SELECT flight_itinerary_key FROM ${self()})`)}

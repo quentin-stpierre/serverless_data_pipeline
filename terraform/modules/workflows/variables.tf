@@ -18,17 +18,27 @@ variable "function_name" {
   type        = string
 }
 
-variable "pubsub_topic_name" {
-  description = "The name of the Pub/Sub topic to publish to"
-  type        = string
-}
-
-variable "weather_workflow_name" {
-  description = "The name of the workflow that triggers the weather processing task."
+variable "workflow_name" {
+  description = "The name of the Cloud Workflow"
   type        = string
 }
 
 variable "workflow_sa_name" {
   description = "The name of the workflow service account."
+  type        = string
+}
+
+variable "dataform_repo_name" {
+  description = "The name of the Dataform repository to invoke"
+  type        = string
+}
+
+variable "dataform_runner_sa_email" {
+  description = "The service account email used for Dataform invocations"
+  type        = string
+}
+
+variable "marts_dataset_id" {
+  description = "The ID of the marts BigQuery dataset for low-price alert queries"
   type        = string
 }

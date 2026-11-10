@@ -1,0 +1,39 @@
+config {
+  type: "incremental",
+  schema: "flight_marts",
+  uniqueKey: ["observation_id"],
+  description: "Gold fact table: time-series flight price observations across scrape runs",
+  bigquery: {
+    partitionBy: "scraped_at_date",
+    clusterBy: ["search_name", "flight_itinerary_key", "price"]
+  }
+}
+
+WITH latest_staged AS (
+  SELECT
+    -- Deterministic observation key preventing duplicate entries if scraped twice on the same day
+    TO_HEX(MD5(CONCAT(flight_itinerary_key, '|', CAST(scraped_at_date AS STRING)))) AS observation_id,
+    flight_itinerary_key,
+    search_name,
+    scraped_at_date,
+    outbound_date,
+    return_date,
+    -- Critical metrics
+    DATE_DIFF(outbound_date, scraped_at_date, DAY) AS days_to_departure,
+    DATE_DIFF(return_date, outbound_date, DAY) AS trip_duration_days,
+    price,
+    currency,
+    seat_class,
+    trip_type,
+    data_source,
+    CURRENT_TIMESTAMP() AS recorded_at
+  FROM
+    ${ref("stg_google_flights")}
+)
+
+SELECT
+  *
+FROM
+  latest_staged
+
+${when(incremental(), `WHERE observation_id NOT IN (SELECT observation_id FROM ${self()})`)}

@@ -1,9 +1,9 @@
-output "scheduler_job_name" {
-  description = "The name of the Cloud Scheduler job"
-  value       = google_cloud_scheduler_job.workflow_trigger.name
+output "scheduler_job_names" {
+  description = "The names of the Cloud Scheduler jobs"
+  value       = { for k, v in google_cloud_scheduler_job.flight_pipeline_triggers : k => v.name }
 }
 
-output "scheduler_job_id" {
-  description = "The ID of the Cloud Scheduler job"
-  value       = google_cloud_scheduler_job.workflow_trigger.id
+output "scheduler_job_ids" {
+  description = "The IDs of the Cloud Scheduler jobs"
+  value       = { for k, v in google_cloud_scheduler_job.flight_pipeline_triggers : k => v.id }
 }

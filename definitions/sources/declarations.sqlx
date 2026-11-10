@@ -1,0 +1,7 @@
+config {
+  type: "declaration",
+  database: "serverless-data-pipeline-111",
+  schema: "raw_flight_data",
+  name: "ext_google_flights",
+  description: "Raw external table in BigQuery pointing to Hive-partitioned JSONL flight records in GCS"
+}

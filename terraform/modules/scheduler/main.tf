@@ -1,6 +1,6 @@
 resource "google_service_account" "scheduler_sa" {
   account_id   = var.scheduler_sa_name
-  display_name = "Service Account for Weather Pipeline Cloud Scheduler"
+  display_name = "Service Account for Flight Scraper Cloud Scheduler"
   project      = var.project_id
 }
 
@@ -10,10 +10,12 @@ resource "google_project_iam_member" "scheduler_workflow_invoker" {
   member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
 }
 
-resource "google_cloud_scheduler_job" "workflow_trigger" {
-  name             = var.workflow_trigger_name
-  description      = "Trigger weather workflow daily at 9am Europe/Brussels"
-  schedule         = "0 9 * * *"
+resource "google_cloud_scheduler_job" "flight_pipeline_triggers" {
+  for_each = var.flight_searches
+
+  name             = "flight-trigger-${replace(each.key, "_", "-")}"
+  description      = "Trigger flight scraping workflow for ${each.key} (${each.value.origin} -> ${each.value.destination})"
+  schedule         = each.value.schedule
   time_zone        = "Europe/Brussels"
   project          = var.project_id
   region           = var.region
@@ -26,7 +28,22 @@ resource "google_cloud_scheduler_job" "workflow_trigger" {
   http_target {
     uri         = "https://workflowexecutions.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/workflows/${var.workflow_name}/executions"
     http_method = "POST"
-    body        = base64encode("{}")
+    body = base64encode(jsonencode({
+      argument = jsonencode({
+        search_name        = each.key
+        origin             = each.value.origin
+        destination        = each.value.destination
+        start_date         = each.value.start_date
+        trip_length        = each.value.trip_length
+        flexibility_window = each.value.flexibility_window
+        trip_type          = each.value.trip_type
+        target_price       = each.value.target_price
+        currency           = each.value.currency
+        seat               = each.value.seat
+        adults             = each.value.adults
+        max_stops          = each.value.max_stops
+      })
+    }))
 
     oauth_token {
       service_account_email = google_service_account.scheduler_sa.email

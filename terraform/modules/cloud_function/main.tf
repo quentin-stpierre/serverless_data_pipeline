@@ -8,38 +8,35 @@ resource "google_storage_bucket" "function_bucket" {
 
 data "archive_file" "function_zip" {
   type        = "zip"
-  source_dir  = "${path.module}/../../../functions/fetch_weather"
-  output_path = "${path.module}/fetch_weather.zip"
+  source_dir  = "${path.module}/../../../functions/fetch_flights"
+  output_path = "${path.module}/fetch_flights.zip"
+  excludes = [
+    ".venv",
+    "__pycache__"
+  ]
 }
 
 resource "google_storage_bucket_object" "function_zip_object" {
-  name   = "fetch_weather.${data.archive_file.function_zip.output_md5}.zip"
+  name   = "fetch_flights.${data.archive_file.function_zip.output_md5}.zip"
   bucket = google_storage_bucket.function_bucket.name
   source = data.archive_file.function_zip.output_path
 }
 
 resource "google_service_account" "function_sa" {
   account_id   = var.cloud_function_sa_name
-  display_name = "Fetch Weather Cloud Function Service Account"
+  display_name = "Fetch Flights Cloud Function Service Account"
   project      = var.project_id
 }
 
-resource "google_secret_manager_secret_iam_member" "secret_accessor" {
-  project   = var.project_id
-  secret_id = var.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.function_sa.email}"
-}
-
-resource "google_cloudfunctions2_function" "fetch_weather" {
+resource "google_cloudfunctions2_function" "fetch_flights" {
   name        = var.cloud_function_name
   location    = var.region
   project     = var.project_id
-  description = "HTTP-triggered function to fetch and transform OpenWeatherMap data"
+  description = "HTTP-triggered function to scrape flight data and store raw results in GCS"
 
   build_config {
     runtime     = "python310"
-    entry_point = "fetch_weather"
+    entry_point = "fetch_flights"
     source {
       storage_source {
         bucket = google_storage_bucket.function_bucket.name
@@ -50,8 +47,12 @@ resource "google_cloudfunctions2_function" "fetch_weather" {
 
   service_config {
     max_instance_count    = 1
-    available_memory      = "256M"
-    timeout_seconds       = 60
+    available_memory      = "512M"
+    timeout_seconds       = 300
     service_account_email = google_service_account.function_sa.email
+
+    environment_variables = {
+      RAW_DATA_BUCKET = var.raw_data_bucket_name
+    }
   }
 }

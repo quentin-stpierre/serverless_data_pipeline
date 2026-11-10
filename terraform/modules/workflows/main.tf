@@ -1,6 +1,6 @@
 resource "google_service_account" "workflow_sa" {
   account_id   = var.workflow_sa_name
-  display_name = "Service Account for Weather Pipeline Workflow"
+  display_name = "Service Account for Flights Pipeline Workflow"
   project      = var.project_id
 }
 
@@ -20,37 +20,56 @@ resource "google_cloudfunctions2_function_iam_member" "workflow_gcf_invoker" {
   member         = "serviceAccount:${google_service_account.workflow_sa.email}"
 }
 
-resource "google_pubsub_topic_iam_member" "workflow_pubsub_publisher" {
-  project = var.project_id
-  topic   = var.pubsub_topic_name
-  role    = "roles/pubsub.publisher"
-  member  = "serviceAccount:${google_service_account.workflow_sa.email}"
-}
-
 resource "google_project_iam_member" "workflow_logging" {
   project = var.project_id
   role    = "roles/logging.logWriter"
   member  = "serviceAccount:${google_service_account.workflow_sa.email}"
 }
 
-resource "google_workflows_workflow" "weather_workflow" {
-  name            = var.weather_workflow_name
-  region          = var.region
-  project         = var.project_id
-  description     = "Orchestrates weather data ingestion from Cloud Function to Pub/Sub"
-  service_account = google_service_account.workflow_sa.email
-  call_log_level  = "LOG_ALL_CALLS"
+resource "google_dataform_repository_iam_member" "workflow_dataform_editor" {
+  project    = var.project_id
+  region     = var.region
+  repository = var.dataform_repo_name
+  role       = "roles/dataform.editor"
+  member     = "serviceAccount:${google_service_account.workflow_sa.email}"
+}
+
+resource "google_project_iam_member" "workflow_bigquery_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.workflow_sa.email}"
+}
+
+resource "google_bigquery_dataset_iam_member" "workflow_bigquery_marts_viewer" {
+  project    = var.project_id
+  dataset_id = var.marts_dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${google_service_account.workflow_sa.email}"
+}
+
+resource "google_workflows_workflow" "pipeline_workflow" {
+  name                = var.workflow_name
+  region              = var.region
+  project             = var.project_id
+  description         = "Orchestrates flight data scraping and ingestion into GCS"
+  service_account     = google_service_account.workflow_sa.email
+  call_log_level      = "LOG_ALL_CALLS"
+  deletion_protection = true
 
   source_contents = templatefile("${path.module}/workflow.yaml", {
-    function_uri      = var.function_uri
-    project_id        = var.project_id
-    pubsub_topic_name = var.pubsub_topic_name
+    function_uri             = var.function_uri
+    project_id               = var.project_id
+    region                   = var.region
+    dataform_repo_name       = var.dataform_repo_name
+    dataform_runner_sa_email = var.dataform_runner_sa_email
   })
 
   depends_on = [
     google_cloud_run_service_iam_member.workflow_run_invoker,
     google_cloudfunctions2_function_iam_member.workflow_gcf_invoker,
-    google_pubsub_topic_iam_member.workflow_pubsub_publisher,
-    google_project_iam_member.workflow_logging
+    google_project_iam_member.workflow_logging,
+    google_dataform_repository_iam_member.workflow_dataform_editor,
+    google_project_iam_member.workflow_bigquery_job_user,
+    google_bigquery_dataset_iam_member.workflow_bigquery_marts_viewer,
   ]
 }

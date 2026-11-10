@@ -11,14 +11,14 @@ resource "google_project_service" "services" {
     "bigquery.googleapis.com",
     "storage.googleapis.com",
     "cloudresourcemanager.googleapis.com",
-    "secretmanager.googleapis.com",
     "cloudfunctions.googleapis.com",
     "cloudbuild.googleapis.com",
     "run.googleapis.com",
-    "pubsub.googleapis.com",
     "workflows.googleapis.com",
     "cloudscheduler.googleapis.com",
     "monitoring.googleapis.com",
+    "dataform.googleapis.com",
+    "secretmanager.googleapis.com",
   ])
   project = google_project.project.project_id
   service = each.key
@@ -26,26 +26,15 @@ resource "google_project_service" "services" {
   disable_on_destroy = false
 }
 
-resource "google_secret_manager_secret" "open_weather_map_api_key" {
-  secret_id = "open-weather-map-api-key"
-  project   = google_project.project.project_id
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [google_project_service.services]
-}
-
 module "scheduler" {
   source = "./modules/scheduler"
 
-  project_id    = google_project.project.project_id
-  region        = var.region
-  workflow_name = module.workflows.workflow_name
+  project_id      = google_project.project.project_id
+  region          = var.region
+  workflow_name   = module.workflows.workflow_name
+  flight_searches = var.flight_searches
 
-  scheduler_sa_name     = var.scheduler_sa_name
-  workflow_trigger_name = var.workflow_trigger_name
+  scheduler_sa_name = var.scheduler_sa_name
 
   depends_on = [google_project_service.services, module.workflows]
 }
@@ -53,24 +42,42 @@ module "scheduler" {
 module "workflows" {
   source = "./modules/workflows"
 
-  project_id        = google_project.project.project_id
-  region            = var.region
-  function_uri      = module.cloud_function.function_uri
-  function_name     = module.cloud_function.function_name
-  pubsub_topic_name = module.pubsub.topic_name
+  project_id               = google_project.project.project_id
+  region                   = var.region
+  function_uri             = module.cloud_function.function_uri
+  function_name            = module.cloud_function.function_name
+  dataform_repo_name       = module.dataform.repository_name
+  dataform_runner_sa_email = module.dataform.dataform_runner_sa_email
+  marts_dataset_id         = module.bigquery.marts_dataset_id
 
-  workflow_sa_name      = var.workflow_sa_name
-  weather_workflow_name = var.weather_workflow_name
+  workflow_sa_name = var.workflow_sa_name
+  workflow_name    = var.flight_workflow_name
 
-  depends_on = [google_project_service.services, module.cloud_function, module.pubsub]
+  depends_on = [google_project_service.services, module.cloud_function, module.dataform, module.bigquery]
+}
+
+module "dataform" {
+  source = "./modules/dataform"
+
+  project_id            = google_project.project.project_id
+  region                = var.region
+  git_repository_url    = "https://github.com/${var.github_owner}/${var.github_repo}.git"
+  workflow_sa_email     = "${var.workflow_sa_name}@${google_project.project.project_id}.iam.gserviceaccount.com"
+  raw_dataset_id        = module.bigquery.dataset_id
+  staging_dataset_id    = module.bigquery.staging_dataset_id
+  marts_dataset_id      = module.bigquery.marts_dataset_id
+  assertions_dataset_id = module.bigquery.assertions_dataset_id
+  biglake_connection_id = module.bigquery.biglake_connection_id
+
+  depends_on = [google_project_service.services, module.bigquery]
 }
 
 module "cloud_function" {
   source = "./modules/cloud_function"
 
-  project_id = google_project.project.project_id
-  region     = var.region
-  secret_id  = google_secret_manager_secret.open_weather_map_api_key.secret_id
+  project_id           = google_project.project.project_id
+  region               = var.region
+  raw_data_bucket_name = var.raw_data_bucket_name
 
   cloud_function_sa_name = var.cloud_function_sa_name
   cloud_function_name    = var.cloud_function_name
@@ -78,28 +85,27 @@ module "cloud_function" {
   depends_on = [google_project_service.services]
 }
 
-module "pubsub" {
-  source = "./modules/pubsub"
-
-  project_id = google_project.project.project_id
-  dataset_id = module.bigquery.dataset_id
-  table_id   = module.bigquery.table_id
-
-  topic_name           = var.topic_name
-  bq_subscription_name = var.bq_subscription_name
-
-  depends_on = [google_project_service.services, module.bigquery]
-}
-
 module "bigquery" {
   source = "./modules/bigquery"
 
-  project_id = google_project.project.project_id
-  dataset_id = var.dataset_id
-  table_id   = var.table_id
-  region     = var.region
+  project_id      = google_project.project.project_id
+  dataset_id      = var.dataset_id
+  table_id        = var.table_id
+  region          = var.region
+  raw_bucket_name = module.storage.bucket_name
 
-  depends_on = [google_project_service.services]
+  depends_on = [google_project_service.services, module.storage]
+}
+
+module "storage" {
+  source = "./modules/storage"
+
+  project_id              = google_project.project.project_id
+  region                  = var.region
+  bucket_name             = var.raw_data_bucket_name
+  cloud_function_sa_email = module.cloud_function.function_sa_email
+
+  depends_on = [google_project_service.services, module.cloud_function]
 }
 
 module "monitoring" {
@@ -119,8 +125,9 @@ module "cicd" {
   github_owner = var.github_owner
   github_repo  = var.github_repo
 
-  terraform_cicd_sa        = var.terraform_cicd_sa
-  cloud_build_trigger_name = var.cloud_build_trigger_name
-
-  depends_on = [google_project_service.services]
+  terraform_cicd_sa         = var.terraform_cicd_sa
+  cloud_build_trigger_name  = var.cloud_build_trigger_name
+  terraform_apply_approvers = var.terraform_apply_approvers
+  depends_on                = [google_project_service.services]
+  region                    = var.region
 }

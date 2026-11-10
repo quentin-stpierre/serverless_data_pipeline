@@ -1,23 +1,134 @@
 main:
+  params: [args]
   steps:
-    - fetch_weather_data:
-        call: http.get
+    - init_vars:
+        assign:
+          - search_name: '$${default(map.get(args, "search_name"), "default")}'
+          - trip_type: '$${default(map.get(args, "trip_type"), "")}'
+          - target_price: '$${map.get(args, "target_price")}'
+          - price_alert_triggered: false
+
+    - scrape_flights:
+        call: http.post
         args:
           url: ${function_uri}
+          body: $${args}
           auth:
             type: OIDC
-        result: function_result
-    - prepare_pubsub_message:
-        assign:
-          - message: $${function_result.body}
-          - encoded_message: $${base64.encode(json.encode(message))}
-    - publish_to_pubsub:
-        call: googleapis.pubsub.v1.projects.topics.publish
+        result: scrape_result
+
+    - compile_dataform:
+        call: http.post
         args:
-          topic: projects/${project_id}/topics/${pubsub_topic_name}
+          url: https://dataform.googleapis.com/v1beta1/projects/${project_id}/locations/${region}/repositories/${dataform_repo_name}/compilationResults
+          auth:
+            type: OAuth2
           body:
-            messages:
-              - data: $${encoded_message}
-        result: publish_result
+            gitCommitish: "main"
+            codeCompilationConfig:
+              vars:
+                search_name: $${search_name}
+                trip_type: $${trip_type}
+                target_price: '$${if(target_price != null, string(target_price), "")}'
+        result: compilation_result
+
+    - invoke_dataform:
+        call: http.post
+        args:
+          url: https://dataform.googleapis.com/v1beta1/projects/${project_id}/locations/${region}/repositories/${dataform_repo_name}/workflowInvocations
+          auth:
+            type: OAuth2
+          body:
+            compilationResult: $${compilation_result.body.name}
+            invocationConfig:
+              serviceAccount: "${dataform_runner_sa_email}"
+        result: invocation_result
+
+    - poll_dataform_status:
+        call: http.get
+        args:
+          url: '$${"https://dataform.googleapis.com/v1beta1/" + invocation_result.body.name}'
+          auth:
+            type: OAuth2
+        result: invocation_status
+
+    - check_dataform_status:
+        switch:
+          - condition: '$${invocation_status.body.state == "RUNNING"}'
+            steps:
+              - wait_before_poll:
+                  call: sys.sleep
+                  args:
+                    seconds: 5
+              - retry_poll:
+                  next: poll_dataform_status
+          - condition: '$${invocation_status.body.state != "SUCCEEDED"}'
+            raise: '$${"Dataform workflow invocation failed with state: " + invocation_status.body.state}'
+
+    - query_price_alerts:
+        call: http.post
+        args:
+          url: https://bigquery.googleapis.com/bigquery/v2/projects/${project_id}/queries
+          auth:
+            type: OAuth2
+          body:
+            useLegacySql: false
+            query: |
+              SELECT
+                search_name,
+                alert_reason,
+                origin_airport,
+                destination_airport,
+                CAST(outbound_date AS STRING) AS outbound_date,
+                COALESCE(CAST(return_date AS STRING), 'N/A') AS return_date,
+                airlines,
+                COALESCE(CAST(outbound_departure_time AS STRING), 'N/A') AS outbound_departure_time,
+                COALESCE(CAST(outbound_duration_mins AS STRING), 'N/A') AS outbound_duration_mins,
+                COALESCE(CAST(return_departure_time AS STRING), 'N/A') AS return_departure_time,
+                COALESCE(CAST(return_duration_mins AS STRING), 'N/A') AS return_duration_mins,
+                trip_type,
+                CAST(current_price AS STRING) AS current_price,
+                currency,
+                COALESCE(CAST(prev_min_price AS STRING), 'N/A') AS prev_min_price,
+                COALESCE(CAST(target_price AS STRING), 'N/A') AS target_price
+              FROM `${project_id}.flight_marts.mart_price_alerts`
+              WHERE should_alert = TRUE AND search_name = '$${search_name}'
+              LIMIT 1
+        result: bq_result
+
+    - emit_alert_if_needed:
+        switch:
+          - condition: '$${int(default(map.get(bq_result.body, "totalRows"), "0")) > 0}'
+            steps:
+              - mark_triggered:
+                  assign:
+                    - row: '$${bq_result.body.rows[0].f}'
+                    - price_alert_triggered: true
+              - log_price_alert:
+                  call: sys.log
+                  args:
+                    severity: "WARNING"
+                    json:
+                      event_type: "FLIGHT_PRICE_LOW_ALERT"
+                      search_name: $${row[0].v}
+                      alert_reason: $${row[1].v}
+                      origin: $${row[2].v}
+                      destination: $${row[3].v}
+                      outbound_date: $${row[4].v}
+                      return_date: $${row[5].v}
+                      airlines: $${row[6].v}
+                      departure_time: $${row[7].v}
+                      outbound_duration_mins: $${row[8].v}
+                      return_departure_time: $${row[9].v}
+                      return_duration_mins: $${row[10].v}
+                      trip_type: $${row[11].v}
+                      current_price: $${row[12].v}
+                      currency: $${row[13].v}
+                      previous_min_price: $${row[14].v}
+                      target_price: $${row[15].v}
+
     - return_result:
-        return: $${publish_result}
+        return:
+          scraper_response: $${scrape_result.body}
+          dataform_invocation: $${invocation_result.body.name}
+          price_alert_triggered: $${price_alert_triggered}

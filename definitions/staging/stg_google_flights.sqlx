@@ -1,0 +1,155 @@
+config {
+  type: "view",
+  schema: "flight_staging",
+  description: "Silver staging view: clean datatypes, unnest flight legs, and generate itinerary surrogate keys"
+}
+
+WITH base_records AS (
+  SELECT
+    -- Hive partition column from GCS path (dt=YYYY-MM-DD)
+    CAST(dt AS DATE) AS scraped_at_date,
+
+    -- Search configuration identifier from terraform.tfvars
+    COALESCE(_query_meta.search_name, 'default') AS search_name,
+
+    -- Extract itinerary dimensions from flights array and query metadata
+    COALESCE(flights[SAFE_OFFSET(0)].from_airport.code, _query_meta.origin) AS origin_airport,
+    COALESCE(flights[SAFE_OFFSET(0)].to_airport.code, _query_meta.destination) AS destination_airport,
+    PARSE_DATE('%Y-%m-%d', _query_meta.outbound_date) AS outbound_date,
+    SAFE.PARSE_DATE('%Y-%m-%d', _query_meta.return_date) AS return_date,
+    ARRAY_TO_STRING(airlines, ', ') AS airlines,
+
+    -- Construct departure time (hours and minutes) and duration
+    TIME(
+      flights[SAFE_OFFSET(0)].departure.time[SAFE_OFFSET(0)],
+      flights[SAFE_OFFSET(0)].departure.time[SAFE_OFFSET(1)],
+      0
+    ) AS leg_departure_time,
+    CAST(flights[SAFE_OFFSET(0)].duration AS INT64) AS leg_duration_mins,
+
+    -- Price & Metadata
+    CAST(price AS NUMERIC) AS price,
+    COALESCE(_query_meta.seat, 'economy') AS seat_class,
+    COALESCE(_query_meta.currency, 'EUR') AS currency,
+    COALESCE(_query_meta.trip, 'round-trip') AS trip_type,
+    'google_flights' AS data_source
+  FROM
+    ${ref("ext_google_flights")}
+  WHERE
+    COALESCE(type, '') != 'seed'
+    AND (
+      '${dataform.projectConfig.vars.search_name}' = ''
+      OR COALESCE(_query_meta.search_name, 'default') = '${dataform.projectConfig.vars.search_name}'
+    )
+),
+
+return_by_airline AS (
+  SELECT
+    scraped_at_date,
+    search_name,
+    origin_airport AS return_origin_airport,
+    destination_airport AS return_destination_airport,
+    outbound_date,
+    return_date,
+    airlines,
+    leg_departure_time AS return_departure_time,
+    leg_duration_mins AS return_duration_mins
+  FROM
+    base_records
+  WHERE
+    trip_type = 'one-way'
+  QUALIFY
+    ROW_NUMBER() OVER (
+      PARTITION BY scraped_at_date, search_name, origin_airport, destination_airport, outbound_date, return_date, airlines
+      ORDER BY price ASC
+    ) = 1
+),
+
+return_fallback AS (
+  SELECT
+    scraped_at_date,
+    search_name,
+    origin_airport AS return_origin_airport,
+    destination_airport AS return_destination_airport,
+    outbound_date,
+    return_date,
+    leg_departure_time AS return_departure_time,
+    leg_duration_mins AS return_duration_mins
+  FROM
+    base_records
+  WHERE
+    trip_type = 'one-way'
+  QUALIFY
+    ROW_NUMBER() OVER (
+      PARTITION BY scraped_at_date, search_name, origin_airport, destination_airport, outbound_date, return_date
+      ORDER BY price ASC
+    ) = 1
+),
+
+enriched_source AS (
+  SELECT
+    b.scraped_at_date,
+    b.search_name,
+    b.origin_airport,
+    b.destination_airport,
+    b.outbound_date,
+    b.return_date,
+    b.airlines,
+    b.leg_departure_time AS outbound_departure_time,
+    b.leg_duration_mins AS outbound_duration_mins,
+    CASE
+      WHEN b.trip_type = 'round-trip' THEN COALESCE(ra.return_departure_time, rf.return_departure_time)
+      ELSE CAST(NULL AS TIME)
+    END AS return_departure_time,
+    CASE
+      WHEN b.trip_type = 'round-trip' THEN COALESCE(ra.return_duration_mins, rf.return_duration_mins)
+      ELSE CAST(NULL AS INT64)
+    END AS return_duration_mins,
+    b.price,
+    b.seat_class,
+    b.currency,
+    b.trip_type,
+    b.data_source
+  FROM
+    base_records b
+  LEFT JOIN
+    return_by_airline ra
+    ON b.trip_type = 'round-trip'
+    AND b.scraped_at_date = ra.scraped_at_date
+    AND b.search_name = ra.search_name
+    AND b.outbound_date = ra.outbound_date
+    AND b.return_date = ra.return_date
+    AND b.destination_airport = ra.return_origin_airport
+    AND b.origin_airport = ra.return_destination_airport
+    AND b.airlines = ra.airlines
+  LEFT JOIN
+    return_fallback rf
+    ON b.trip_type = 'round-trip'
+    AND b.scraped_at_date = rf.scraped_at_date
+    AND b.search_name = rf.search_name
+    AND b.outbound_date = rf.outbound_date
+    AND b.return_date = rf.return_date
+    AND b.destination_airport = rf.return_origin_airport
+    AND b.origin_airport = rf.return_destination_airport
+  WHERE
+    '${dataform.projectConfig.vars.trip_type}' = ''
+    OR b.trip_type = '${dataform.projectConfig.vars.trip_type}'
+)
+
+SELECT
+  -- Deterministic surrogate key identifying unique physical flight itineraries
+  TO_HEX(MD5(CONCAT(
+    search_name, '|',
+    origin_airport, '|',
+    destination_airport, '|',
+    CAST(outbound_date AS STRING), '|',
+    COALESCE(CAST(return_date AS STRING), ''), '|',
+    airlines, '|',
+    trip_type, '|',
+    COALESCE(CAST(outbound_departure_time AS STRING), ''), '|',
+    COALESCE(CAST(return_departure_time AS STRING), '')
+  ))) AS flight_itinerary_key,
+
+  *
+FROM
+  enriched_source
