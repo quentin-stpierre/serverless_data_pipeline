@@ -7,9 +7,10 @@ resource "google_storage_bucket" "function_bucket" {
 }
 
 data "archive_file" "function_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/../../../functions/fetch_flights"
-  output_path = "${path.module}/fetch_flights.zip"
+  type             = "zip"
+  source_dir       = "${path.module}/../../../functions/fetch_flights"
+  output_path      = "${path.module}/fetch_flights.zip"
+  output_file_mode = "0666"
   excludes = [
     ".venv",
     "__pycache__"

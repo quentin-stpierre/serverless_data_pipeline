@@ -9,11 +9,23 @@ steps:
       - '-c'
       - |
         set -eu
-        cd terraform
+        cd /workspace
 
-        TF_HASH=$$(find . -name '*.tf' -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+        TF_HASH=$$(
+          find terraform functions -type f \
+            ! -path '*/.terraform/*' \
+            ! -path '*/__pycache__/*' \
+            ! -path '*/.venv/*' \
+            ! -name '*.zip' \
+            ! -name '*.tfstate*' \
+            ! -name '.DS_Store' \
+            | LC_ALL=C sort \
+            | xargs sha256sum \
+            | sha256sum \
+            | cut -d' ' -f1
+        )
         echo "$$TF_HASH" > /workspace/tf_hash.txt
-        echo "Looking for plan with hash: $$TF_HASH"
+        echo "Looking for plan bundle with hash: $$TF_HASH"
 
   - name: 'gcr.io/cloud-builders/gsutil'
     entrypoint: 'sh'
@@ -22,7 +34,7 @@ steps:
       - |
         set -eu
         TF_HASH=$$(cat /workspace/tf_hash.txt)
-        if ! gsutil cp gs://${_PLAN_BUCKET}/plans/$${TF_HASH}.tfplan /workspace/tfplan; then
+        if ! gsutil cp gs://${_PLAN_BUCKET}/plans/$${TF_HASH}.tar.gz /workspace/plan_bundle.tar.gz; then
           echo "ERROR: no matching reviewed plan found for hash $${TF_HASH}."
           echo "This usually means main changed after the PR was planned/approved."
           echo "Open a new PR (even a no-op rebase) to generate a fresh reviewed plan."
@@ -35,6 +47,7 @@ steps:
       - '-c'
       - |
         set -eu
-        cd terraform
-        terraform init
-        terraform apply /workspace/tfplan
+        tar -xzf /workspace/plan_bundle.tar.gz -C /workspace
+        cd /workspace/terraform
+        terraform init -input=false
+        terraform apply -input=false /workspace/tfplan
