@@ -9,14 +9,34 @@ steps:
       - '-c'
       - |
         set -eu
-        cd terraform
+        cd /workspace
 
-        TF_HASH=$$(find . -name '*.tf' -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+        TF_HASH=$$(
+          find terraform functions -type f \
+            ! -path '*/.terraform/*' \
+            ! -path '*/__pycache__/*' \
+            ! -path '*/.venv/*' \
+            ! -name '*.zip' \
+            ! -name '*.tfstate*' \
+            ! -name '.DS_Store' \
+            | LC_ALL=C sort \
+            | xargs sha256sum \
+            | sha256sum \
+            | cut -d' ' -f1
+        )
         echo "$$TF_HASH" > /workspace/tf_hash.txt
         echo "Computed plan hash: $$TF_HASH"
 
+        cd /workspace/terraform
         terraform init -input=false
         terraform plan -input=false -out=/workspace/tfplan
+
+        cd /workspace
+        echo "tfplan" > /workspace/bundle_files.txt
+        find terraform -name '*.zip' -type f | LC_ALL=C sort >> /workspace/bundle_files.txt
+        echo "Bundling plan artifacts:"
+        cat /workspace/bundle_files.txt
+        tar -czf /workspace/plan_bundle.tar.gz -T /workspace/bundle_files.txt
 
   - name: 'gcr.io/cloud-builders/gsutil'
     entrypoint: 'sh'
@@ -25,5 +45,5 @@ steps:
       - |
         set -eu
         TF_HASH=$$(cat /workspace/tf_hash.txt)
-        gsutil cp /workspace/tfplan gs://${_PLAN_BUCKET}/plans/$${TF_HASH}.tfplan
-        echo "Uploaded plan for hash $${TF_HASH}"
+        gsutil cp /workspace/plan_bundle.tar.gz gs://${_PLAN_BUCKET}/plans/$${TF_HASH}.tar.gz
+        echo "Uploaded plan bundle for hash $${TF_HASH}"
