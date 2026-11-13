@@ -6,6 +6,7 @@ main:
           - search_name: '$${default(map.get(args, "search_name"), "default")}'
           - trip_type: '$${default(map.get(args, "trip_type"), "")}'
           - target_price: '$${map.get(args, "target_price")}'
+          - full_refresh: '$${default(map.get(args, "full_refresh"), false)}'
           - price_alert_triggered: false
 
     - scrape_flights:
@@ -42,6 +43,7 @@ main:
             compilationResult: $${compilation_result.body.name}
             invocationConfig:
               serviceAccount: "${dataform_runner_sa_email}"
+              fullyRefreshIncrementalTablesEnabled: $${full_refresh}
         result: invocation_result
 
     - poll_dataform_status:

@@ -1,6 +1,6 @@
 # Serverless Flight Tracking Pipeline (ELT Architecture)
 
-This document provides a comprehensive technical overview of the serverless Extract-Load-Transform (ELT) flight price tracking pipeline on Google Cloud Platform (GCP), detailing its end-to-end architecture, step-by-step lifecycle, code specifications, price-low alerting, and least-privilege IAM model.
+This document provides a comprehensive technical overview of the serverless Extract-Load-Transform (ELT) flight price tracking pipeline on Google Cloud Platform (GCP), detailing its end-to-end architecture, step-by-step lifecycle, code specifications, price-low alerting, GitOps CI/CD workflow (Cloud Build + Terraform), and least-privilege IAM model.
 
 ---
 
@@ -201,7 +201,101 @@ python3 functions/fetch_flights/fast_flights_scraper.py
 
 ---
 
-## 6. Least-Privilege IAM & Security Model
+## 6. CI/CD Pipeline & Pull Request Workflow (Cloud Build + Terraform)
+
+Infrastructure changes are managed through a two-stage, GitOps **Plan-on-PR / Approval-Gated-Apply-on-Main** pipeline defined in `terraform/modules/cicd/main.tf`, `cloudbuild.plan.yaml`, and `cloudbuild.apply.yaml`.
+
+### 6.1 End-to-End CI/CD Flow
+
+```mermaid
+flowchart TD
+    PR["1. Open / Update Pull Request targeting main"] --> PlanTrigger["2. Cloud Build PR Trigger: terraform-plan-on-pr (cloudbuild.plan.yaml, SA: terraform-ci-sa-plan)"]
+    PlanTrigger --> PlanStep["3. Compute SHA-256 TF_HASH over terraform/ and functions/, run terraform plan -out=tfplan"]
+    PlanStep --> BundleUpload["4. Package tfplan + fetch_flights.zip into plan_bundle.tar.gz and upload to gs://PROJECT_ID-tf-plans/plans/TF_HASH.tar.gz"]
+    BundleUpload --> GHCheck["5. Report Pass/Fail Status Check on GitHub PR for Code & Plan Review"]
+    GHCheck --> Merge["6. Merge Pull Request to main"]
+    Merge --> ApplyTrigger["7. Cloud Build Push Trigger: terraform-plan-on-pr-apply (cloudbuild.apply.yaml, SA: terraform-ci-sa)"]
+    ApplyTrigger --> PendingGate{"8. Paused in PENDING State (approval_required = true)"}
+    PendingGate -- "Rejected" --> Aborted["Build Rejected - No Infrastructure Changes"]
+    PendingGate -- "Approved via GCP Console or gcloud (roles/cloudbuild.builds.approver)" --> HashCheck{"9. Recompute TF_HASH on main & Fetch Matching Bundle from GCS"}
+    HashCheck -- "Missing (main drifted)" --> DriftFail["Abort Safely (exit 1) - Rebase / Open Fresh PR"]
+    HashCheck -- "Found" --> ApplyStep["10. Extract tfplan + fetch_flights.zip and Run terraform apply tfplan"]
+```
+
+### 6.2 Two-Trigger Architecture: Why PRs vs. Merges Differ on Approval
+
+The CI/CD module (`terraform/modules/cicd/main.tf`) intentionally separates **untrusted PR validation** from **privileged production mutation** across two distinct Cloud Build triggers and service accounts:
+
+| Attribute | PR Plan Trigger (`terraform_plan_trigger`) | Main Apply Trigger (`terraform_apply_trigger`) |
+| :--- | :--- | :--- |
+| **Trigger Name** | `terraform-plan-on-pr` (`var.cloud_build_trigger_name`) | `terraform-plan-on-pr-apply` (`${var.cloud_build_trigger_name}-apply`) |
+| **GitHub Event** | Pull request targeting `^main$` | Push / merge to `^main$` |
+| **Build Config** | `cloudbuild.plan.yaml` | `cloudbuild.apply.yaml` |
+| **Service Account** | `terraform-ci-sa-plan` (**Read-only** project viewer + state/plan bucket access) | `terraform-ci-sa` (**Admin** roles across managed GCP services) |
+| **Cloud Build Approval** | **None** (`approval_config` omitted — runs automatically) | **Required** (`approval_required = true` — pauses in `PENDING` state) |
+| **GitHub Visibility** | Reports pass/fail status check directly on the open GitHub PR | Post-merge build in GCP Cloud Build History (not a PR check) |
+
+- **Why PR builds run without manual Cloud Build approval:** `terraform-plan-on-pr` executes strictly under the read-only `terraform-ci-sa-plan` identity (`roles/viewer`, `roles/iam.securityReviewer`, `roles/storage.objectViewer`, plus `roles/storage.objectUser` scoped only to `<project_id>-tfstate` for state locking and `<project_id>-tf-plans` for saving plan bundles). Because unmerged feature branches cannot mutate infrastructure or read secrets, running automatically gives developers immediate PR check feedback.
+- **Why `main` builds require explicit Cloud Build approval:** `terraform-plan-on-pr-apply` runs under the privileged `terraform-ci-sa` account. Setting `approval_required = true` halts the build in `PENDING` status **before any container step starts** until an authorized principal in `var.terraform_apply_approvers` (granted `roles/cloudbuild.builds.approver`) explicitly approves the deployment.
+
+### 6.3 Cryptographic Plan-to-Apply Integrity (`TF_HASH` & Artifact Bundling)
+
+Rather than running an unreviewed `terraform apply -auto-approve` on `main`, the pipeline guarantees that **`terraform apply` executes the exact binary plan reviewed on the PR**:
+
+1. **Deterministic Source Hashing (`TF_HASH`):**
+   Both `cloudbuild.plan.yaml` and `cloudbuild.apply.yaml` compute an identical SHA-256 digest across all non-ephemeral files in `terraform/` and `functions/` (excluding `.terraform/`, `__pycache__/`, `.venv/`, `*.zip`, `*.tfstate*`, and `.DS_Store`, sorted deterministically with `LC_ALL=C`):
+   - Any modification to `.tf` configs, `terraform.tfvars`, `.terraform.lock.hcl`, `terraform/modules/workflows/workflow.yaml`, or Python scraper code in `functions/fetch_flights/` produces a unique `TF_HASH`.
+2. **Why `plan_bundle.tar.gz` Packages Both `tfplan` and `fetch_flights.zip`:**
+   - During `terraform plan`, `data "archive_file" "function_zip"` (`terraform/modules/cloud_function/main.tf`) builds `terraform/modules/cloud_function/fetch_flights.zip` using `output_file_mode = "0666"` (ensuring deterministic archive checksums across environments) and embeds its file path and MD5 checksum inside `/workspace/tfplan`.
+   - When `terraform apply /workspace/tfplan` runs later inside a fresh, ephemeral Cloud Build container, **Terraform does not re-evaluate `data "archive_file"` data sources when applying a saved binary plan**—it expects `terraform/modules/cloud_function/fetch_flights.zip` to already exist on disk matching the planned hash.
+   - `cloudbuild.plan.yaml` therefore archives `/workspace/tfplan` together with all generated `terraform/**/*.zip` files into `gs://<project_id>-tf-plans/plans/<TF_HASH>.tar.gz`, and `cloudbuild.apply.yaml` extracts them back into `/workspace` prior to `terraform apply`.
+3. **Drift Protection & Automatic Cleanup:**
+   - If `main` advanced after the PR's plan ran (or if an unreviewed commit was pushed directly to `main`), `cloudbuild.apply.yaml` computes the new `TF_HASH`, finds no matching `gs://<project_id>-tf-plans/plans/<TF_HASH>.tar.gz` object in GCS, and **aborts safely (`exit 1`) before modifying any GCP resource**, instructing the operator to rebase or open a fresh PR to generate a reviewed plan.
+   - Abandoned or superseded plan bundles in `<project_id>-tf-plans` are automatically deleted after **14 days** via a GCS bucket `lifecycle_rule`.
+
+### 6.4 Step-by-Step Developer & Approver Guide
+
+#### Step 1: Open or Update a Pull Request
+1. Create a feature branch, commit your changes (`terraform/`, `functions/`, or `definitions/`), and open a Pull Request targeting `main`.
+2. GitHub automatically triggers **`terraform-plan-on-pr`**.
+3. In the GitHub PR **Checks** section, click **Details** next to the Cloud Build check (or open **GCP Console → Cloud Build → History**) to inspect the `terraform plan` output and verify the computed `TF_HASH` and planned resource diff. Pushing new commits to the PR branch automatically runs a fresh plan and uploads a new `<TF_HASH>.tar.gz` bundle.
+
+#### Step 2: Review & Merge to `main`
+1. Confirm the `terraform-plan-on-pr` status check is green and review the exact planned resource changes in the build log.
+2. Merge the Pull Request into `main`.
+
+#### Step 3: Locate & Approve the `PENDING` Apply Build
+Merging to `main` immediately triggers **`terraform-plan-on-pr-apply`**, which pauses in **`PENDING`** status awaiting manual approval.
+
+> **Important:** Because the Pull Request is already merged when the push-to-`main` trigger fires, **`PENDING` apply builds do not appear as status checks on the merged GitHub PR**. Approvers must approve the build in GCP Console or via `gcloud`.
+
+- **Option A — GCP Console:**
+  1. Navigate to **Cloud Build → History** in the Google Cloud Console (`https://console.cloud.google.com/cloud-build/builds?project=<PROJECT_ID>`).
+  2. Locate the build at the top of the list with status **Pending approval** (`terraform-plan-on-pr-apply`).
+  3. Click the build ID, click **Approve** (requires `roles/cloudbuild.builds.approver`), add an optional approval comment, and confirm. Cloud Build will verify `TF_HASH`, download `plan_bundle.tar.gz`, and execute `terraform apply`.
+
+- **Option B — Google Cloud CLI (`gcloud`):**
+  ```bash
+  # 1. List Cloud Build runs currently waiting in PENDING state
+  gcloud builds list \
+    --project=<PROJECT_ID> \
+    --filter="status=PENDING"
+
+  # 2. Approve the PENDING apply build (requires roles/cloudbuild.builds.approver)
+  gcloud alpha builds approve <BUILD_ID> \
+    --project=<PROJECT_ID> \
+    --comment="Approved reviewed PR plan for main deployment"
+  ```
+  *(To cancel an unwanted deployment instead, pass `--reject` to `gcloud alpha builds approve` or click **Reject** in the Console.)*
+
+#### Note on Dataform SQL Changes (`definitions/`)
+The managed Dataform repository (`flights-dataform-repo` in `terraform/modules/dataform/main.tf`) is linked directly to the GitHub repository's `main` branch (`default_branch = "main"`). When `.sqlx` transformations or assertions under `definitions/` are merged to `main`:
+- **No Terraform resource diff is required:** Cloud Workflows compiles Dataform directly against the latest `main` branch commit on its next scheduled or manual run, picking up SQLX updates automatically.
+- If a PR modifies *only* `definitions/` (with zero changes under `terraform/` or `functions/`), `terraform-plan-on-pr` produces a valid no-op plan bundle (`No changes. Your infrastructure matches the configuration.`), so approving or rejecting the post-merge `terraform-plan-on-pr-apply` build is safely a no-op for GCP infrastructure.
+
+---
+
+## 7. Least-Privilege IAM & Security Model
 
 | Identity / Service Account | Granted Role | Scoped Resource | Purpose |
 | :--- | :--- | :--- | :--- |
@@ -221,4 +315,5 @@ python3 functions/fetch_flights/fast_flights_scraper.py
 | Dataform Service Agent | `roles/secretmanager.secretAccessor` | Secret (`dataform-github-token`) | Allows Dataform service agent to read the GitHub PAT secret. |
 | Dataform Service Agent | `roles/iam.serviceAccountTokenCreator`<br>`roles/iam.serviceAccountUser` | `flights-dataform-sa` | Allows Dataform service agent to impersonate `flights-dataform-sa`. |
 | `terraform-ci-sa-plan` | `roles/viewer`<br>`roles/iam.securityReviewer`<br>`roles/storage.objectViewer`<br>`roles/logging.logWriter` | Project (+ `roles/storage.objectUser` on `tfstate` & `tf-plans` buckets) | Read-only service account used by unmerged PR Cloud Build `terraform plan` runs. |
-| `terraform-ci-sa` | Service-specific Admin roles (`bigquery.admin`, `cloudfunctions.admin`, `run.admin`, `workflows.admin`, `cloudscheduler.admin`, `dataform.admin`, `monitoring.admin`, `storage.admin`, `secretmanager.admin`, `iam.serviceAccountAdmin`, `iam.securityAdmin`, `serviceusage.serviceUsageAdmin`) | Project | Used strictly by the manual-approval-gated `terraform apply` trigger on `main`. |
+| `terraform-ci-sa` | Service-specific Admin roles (`bigquery.admin`, `cloudfunctions.admin`, `run.admin`, `workflows.admin`, `cloudscheduler.admin`, `dataform.admin`, `monitoring.admin`, `storage.admin`, `secretmanager.admin`, `cloudbuild.builds.editor`, `iam.serviceAccountAdmin`, `iam.serviceAccountUser`, `iam.securityAdmin`, `serviceusage.serviceUsageAdmin`, `logging.logWriter`) | Project | Used strictly by the manual-approval-gated `terraform apply` trigger on `main`. |
+| `var.terraform_apply_approvers` | `roles/cloudbuild.builds.approver` | Project | Human users or groups authorized to approve or reject `PENDING` `terraform apply` builds on `main`. |
