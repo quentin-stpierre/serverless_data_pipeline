@@ -3,20 +3,81 @@ main:
   steps:
     - init_vars:
         assign:
+          - args: '$${default(args, {})}'
           - search_name: '$${default(map.get(args, "search_name"), "default")}'
+          - origin: '$${default(map.get(args, "origin"), "BRU")}'
+          - destination: '$${default(map.get(args, "destination"), "YUL")}'
+          - start_date: '$${default(map.get(args, "start_date"), "2027-06-01")}'
+          - trip_length: '$${default(map.get(args, "trip_length"), 24)}'
+          - flexibility_window: '$${default(map.get(args, "flexibility_window"), 1)}'
           - trip_type: '$${default(map.get(args, "trip_type"), "")}'
           - target_price: '$${map.get(args, "target_price")}'
           - full_refresh: '$${default(map.get(args, "full_refresh"), false)}'
           - price_alert_triggered: false
 
-    - scrape_flights:
-        call: http.post
+    - log_scrape_start:
+        call: sys.log
         args:
-          url: ${function_uri}
-          body: $${args}
-          auth:
-            type: OIDC
-        result: scrape_result
+          severity: "INFO"
+          json:
+            message: '$${"Starting flight scrape for " + string(search_name) + " (" + string(origin) + " -> " + string(destination) + ")"}'
+            event_type: "FLIGHT_SCRAPE_STARTED"
+            search_name: $${search_name}
+            origin: $${origin}
+            destination: $${destination}
+            start_date: $${start_date}
+            trip_length: $${trip_length}
+            flexibility_window: $${flexibility_window}
+            trip_type: $${trip_type}
+
+    - scrape_flights:
+        try:
+          call: http.post
+          args:
+            url: ${function_uri}
+            body: $${args}
+            timeout: 310
+            auth:
+              type: OIDC
+          result: scrape_result
+        retry:
+          predicate: $${should_retry_scrape}
+          max_retries: 3
+          backoff:
+            initial_delay: 5
+            max_delay: 30
+            multiplier: 2
+        except:
+          as: e
+          steps:
+            - log_scrape_failed:
+                call: sys.log
+                args:
+                  severity: "ERROR"
+                  json:
+                    message: '$${"Flight scrape failed after retries for " + string(search_name) + ": " + default(map.get(e, "message"), "unknown error")}'
+                    event_type: "FLIGHT_SCRAPE_FAILED"
+                    search_name: $${search_name}
+                    origin: $${origin}
+                    destination: $${destination}
+                    error_code: '$${map.get(e, "code")}'
+                    error_tags: '$${default(map.get(e, "tags"), [])}'
+                    error_body: '$${map.get(e, "body")}'
+            - rethrow_scrape_error:
+                raise: $${e}
+
+    - log_scrape_complete:
+        call: sys.log
+        args:
+          severity: "INFO"
+          json:
+            message: '$${"Flight scrape completed successfully for " + string(search_name)}'
+            event_type: "FLIGHT_SCRAPE_COMPLETED"
+            search_name: $${search_name}
+            origin: $${origin}
+            destination: $${destination}
+            records_count: '$${map.get(scrape_result.body, "records_count")}'
+            gcs_uri: '$${map.get(scrape_result.body, "gcs_uri")}'
 
     - compile_dataform:
         call: http.post
@@ -134,3 +195,19 @@ main:
           scraper_response: $${scrape_result.body}
           dataform_invocation: $${invocation_result.body.name}
           price_alert_triggered: $${price_alert_triggered}
+
+should_retry_scrape:
+  params: [e]
+  steps:
+    - extract_error_fields:
+        assign:
+          - error_code: '$${map.get(e, "code")}'
+          - error_tags: '$${default(map.get(e, "tags"), [])}'
+    - check_retryable:
+        switch:
+          - condition: '$${error_code in [429, 500, 502, 503, 504]}'
+            return: true
+          - condition: '$${"ConnectionError" in error_tags or "TimeoutError" in error_tags}'
+            return: true
+    - do_not_retry:
+        return: false
