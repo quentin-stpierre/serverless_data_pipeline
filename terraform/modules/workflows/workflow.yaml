@@ -3,16 +3,17 @@ main:
   steps:
     - init_vars:
         assign:
-          - args: '$${default(args, {})}'
-          - search_name: '$${default(map.get(args, "search_name"), "default")}'
-          - origin: '$${default(map.get(args, "origin"), "BRU")}'
-          - destination: '$${default(map.get(args, "destination"), "YUL")}'
-          - start_date: '$${default(map.get(args, "start_date"), "2027-06-01")}'
-          - trip_length: '$${default(map.get(args, "trip_length"), 24)}'
-          - flexibility_window: '$${default(map.get(args, "flexibility_window"), 1)}'
-          - trip_type: '$${default(map.get(args, "trip_type"), "")}'
-          - target_price: '$${map.get(args, "target_price")}'
-          - full_refresh: '$${default(map.get(args, "full_refresh"), false)}'
+          - empty_map: {}
+          - input_payload: '$${default(args, empty_map)}'
+          - search_name: '$${default(map.get(input_payload, "search_name"), "default")}'
+          - origin: '$${default(map.get(input_payload, "origin"), "BRU")}'
+          - destination: '$${default(map.get(input_payload, "destination"), "YUL")}'
+          - start_date: '$${default(map.get(input_payload, "start_date"), "2027-06-01")}'
+          - trip_length: '$${default(map.get(input_payload, "trip_length"), 24)}'
+          - flexibility_window: '$${default(map.get(input_payload, "flexibility_window"), 1)}'
+          - trip_type: '$${default(map.get(input_payload, "trip_type"), "")}'
+          - target_price: '$${map.get(input_payload, "target_price")}'
+          - full_refresh: '$${default(map.get(input_payload, "full_refresh"), false)}'
           - price_alert_triggered: false
 
     - log_scrape_start:
@@ -35,7 +36,7 @@ main:
           call: http.post
           args:
             url: ${function_uri}
-            body: $${args}
+            body: $${input_payload}
             timeout: 310
             auth:
               type: OIDC
@@ -201,7 +202,7 @@ should_retry_scrape:
   steps:
     - extract_error_fields:
         assign:
-          - error_code: '$${map.get(e, "code")}'
+          - error_code: '$${default(map.get(e, "code"), 0)}'
           - error_tags: '$${default(map.get(e, "tags"), [])}'
     - check_retryable:
         switch:
