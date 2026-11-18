@@ -19,7 +19,7 @@ The pipeline follows a modern **ELT (Extract, Load, Transform)** pattern on Goog
  (Orchestrator: manages execution, Dataform polling & alert logging)
        │
        ├──► 1. HTTP POST (OIDC Auth) ──► [Cloud Function (fetch-flights)]
-       │                                  (Python 3.10 / fast-flights scraper)
+       │                                  (Python 3.14 / fast-flights scraper)
        │                                         │
        │                                         ▼ (Raw JSONL upload)
        │                                 [Google Cloud Storage (GCS)]
@@ -65,23 +65,26 @@ The pipeline follows a modern **ELT (Extract, Load, Transform)** pattern on Goog
 - **Module:** `terraform/modules/workflows`
 - **Definition:** `terraform/modules/workflows/workflow.yaml`
 - **Mechanism:**
-  1. Receives runtime parameters (`args`) from Cloud Scheduler (or manual execution).
-  2. Invokes the `fetch-flights` Cloud Function via OIDC authentication.
-  3. Compiles the Dataform repository, passing `search_name`, `trip_type`, and `target_price` into `codeCompilationConfig.vars`.
-  4. Triggers a Dataform workflow invocation and polls its status every 5 seconds until `state == "SUCCEEDED"`.
-  5. Queries `flight_marts.mart_price_alerts` where `should_alert = TRUE`.
-  6. If a low price is detected, writes a structured `FLIGHT_PRICE_LOW_ALERT` entry to Cloud Logging (`severity: "WARNING"`), triggering the Cloud Monitoring email alert policy.
+  1. Receives runtime parameters (`args`) from Cloud Scheduler (or manual execution, safely defaulting omitted `args` to `{}`).
+  2. Emits Google Cloud structured lifecycle logs (`FLIGHT_SCRAPE_STARTED`, `FLIGHT_SCRAPE_COMPLETED`, `FLIGHT_SCRAPE_FAILED`) via `sys.log` (`jsonPayload`).
+  3. Invokes the `fetch-flights` Cloud Function via OIDC authentication (`timeout: 310`s) wrapped in a `try`/`retry` block with exponential backoff (`max_retries: 3`, retrying `429`/`500`/`502`/`503`/`504` and connection/timeout errors while failing fast on `400` validation errors).
+  4. Compiles the Dataform repository, passing `search_name`, `trip_type`, and `target_price` into `codeCompilationConfig.vars`.
+  5. Triggers a Dataform workflow invocation and polls its status every 5 seconds until `state == "SUCCEEDED"`.
+  6. Queries `flight_marts.mart_price_alerts` where `should_alert = TRUE`.
+  7. If a low price is detected, writes a structured `FLIGHT_PRICE_LOW_ALERT` entry to Cloud Logging (`severity: "WARNING"`), triggering the Cloud Monitoring email alert policy.
 
 ### Step 3: Raw Extraction (Cloud Function: `fetch-flights`)
+- **Runtime:** Python 3.14 (`python314` on Cloud Run functions)
 - **Source Directory:** `functions/fetch_flights/`
 - **Entrypoint:** `fetch_flights(request)` in `main.py`
 - **Scraper Engine:** `fast_flights_scraper.py`
+- **Observability:** Emits GCP-compatible structured JSON logs with Cloud Trace correlation (`GCP_PROJECT` injected via Terraform; `roles/logging.logWriter` granted to `fetch-flights-sa`).
 - **Process:**
-  1. Parses incoming query parameters (`search_name`, `origin`, `destination`, `start_date`, `trip_length`, `flexibility_window`, etc.).
+  1. Parses and validates incoming query parameters (`search_name`, `origin`, `destination`, `start_date`, `trip_length`, `flexibility_window`, etc.).
   2. Generates a symmetric Cartesian product of `(outbound_date, return_date)` pairs based on `flexibility_window`.
-  3. For each date pair, scrapes:
-     - **Round-trip options (`trip="round-trip"`):** Captures outbound flight leg details and the combined round-trip price.
-     - **Return leg options (`trip="one-way"`, `destination -> origin` on `return_date`):** Captures return flight departure times and durations so Dataform can enrich round-trip itineraries.
+  3. Scrapes with return-date deduplication and request pacing:
+     - **Round-trip options (`trip="round-trip"`):** Captures outbound flight leg details and the combined round-trip price per `(outbound_date, return_date)` pair.
+     - **Deduplicated return leg options (`trip="one-way"`, `destination -> origin` on unique `return_date`s):** Captures return flight departure times and durations once per unique `return_date` so Dataform can enrich round-trip itineraries without redundant upstream requests.
   4. Preserves **100% of the raw data** returned by the scraper and attaches `_query_meta` (`search_name`, `outbound_date`, `return_date`, `origin`, `destination`, `trip`, `currency`, `seat`).
 
 ### Step 4: Storage Landing Zone (Google Cloud Storage)

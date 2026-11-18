@@ -13,7 +13,10 @@ data "archive_file" "function_zip" {
   output_file_mode = "0666"
   excludes = [
     ".venv",
-    "__pycache__"
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    "tests",
   ]
 }
 
@@ -29,6 +32,12 @@ resource "google_service_account" "function_sa" {
   project      = var.project_id
 }
 
+resource "google_project_iam_member" "function_logging" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.function_sa.email}"
+}
+
 resource "google_cloudfunctions2_function" "fetch_flights" {
   name        = var.cloud_function_name
   location    = var.region
@@ -36,7 +45,7 @@ resource "google_cloudfunctions2_function" "fetch_flights" {
   description = "HTTP-triggered function to scrape flight data and store raw results in GCS"
 
   build_config {
-    runtime     = "python310"
+    runtime     = "python314"
     entry_point = "fetch_flights"
     source {
       storage_source {
@@ -53,7 +62,12 @@ resource "google_cloudfunctions2_function" "fetch_flights" {
     service_account_email = google_service_account.function_sa.email
 
     environment_variables = {
+      GCP_PROJECT     = var.project_id
       RAW_DATA_BUCKET = var.raw_data_bucket_name
     }
   }
+
+  depends_on = [
+    google_project_iam_member.function_logging,
+  ]
 }
