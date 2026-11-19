@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import date
 import logging
+import math
 import os
 import re
 import time
@@ -65,6 +66,21 @@ def _parse_bounded_int(
     if not (min_value <= parsed <= max_value):
         raise ValidationError(
             f"Parameter '{name}' must be between {min_value} and {max_value}, got {parsed}"
+        )
+    return parsed
+
+
+def _parse_target_price(raw_value: Any) -> float | None:
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+        raise ValidationError(
+            f"Parameter 'target_price' must be a non-negative number, got {type(raw_value).__name__}"
+        )
+    parsed = float(raw_value)
+    if not math.isfinite(parsed) or parsed < 0:
+        raise ValidationError(
+            f"Parameter 'target_price' must be a finite non-negative number, got {raw_value!r}"
         )
     return parsed
 
@@ -142,6 +158,8 @@ def validate_request_params(request_json: Any) -> dict[str, Any]:
         raise ValidationError("Parameter 'currency' must be a 3-letter ISO currency code")
     currency = raw_currency.strip().upper()
 
+    target_price = _parse_target_price(request_json.get("target_price"))
+
     return {
         "search_name": search_name,
         "start_date": start_date,
@@ -153,6 +171,7 @@ def validate_request_params(request_json: Any) -> dict[str, Any]:
         "currency": currency,
         "adults": adults,
         "max_stops": max_stops,
+        "target_price": target_price,
     }
 
 
@@ -216,6 +235,7 @@ def fetch_flights(request: Any):
                         "currency": params["currency"],
                         "adults": params["adults"],
                         "max_stops": params["max_stops"],
+                        "target_price": params["target_price"],
                     }
                 },
             )
@@ -229,9 +249,14 @@ def fetch_flights(request: Any):
                 adults=params["adults"],
                 max_stops=params["max_stops"],
                 search_name=params["search_name"],
+                target_price=params["target_price"],
             )
 
-            gcs_uri = upload_raw_data_to_gcs(bucket_name=bucket_name, data=results)
+            gcs_uri = upload_raw_data_to_gcs(
+                bucket_name=bucket_name,
+                data=results,
+                search_name=params["search_name"],
+            )
             duration_ms = round((time.monotonic() - started_at) * 1000, 2)
             scrape_stats = results.stats.to_dict() if hasattr(results, "stats") else {}
 
@@ -263,6 +288,7 @@ def fetch_flights(request: Any):
                     "start_date": params["start_date"],
                     "trip_length": params["trip_length"],
                     "flexibility_window": params["flexibility_window"],
+                    "target_price": params["target_price"],
                 },
                 "scrape_stats": scrape_stats,
             }, 200

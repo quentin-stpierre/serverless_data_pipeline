@@ -22,6 +22,7 @@ WITH staged_with_id AS (
     DATE_DIFF(outbound_date, scraped_at_date, DAY) AS days_to_departure,
     DATE_DIFF(return_date, outbound_date, DAY) AS trip_duration_days,
     price,
+    target_price,
     currency,
     seat_class,
     trip_type,
@@ -45,4 +46,4 @@ SELECT
 FROM
   latest_staged
 
-${when(incremental(), `WHERE observation_id NOT IN (SELECT observation_id FROM ${self()})`)}
+${when(incremental(), `WHERE scraped_at_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY) AND observation_id NOT IN (SELECT observation_id FROM ${self()})`)}

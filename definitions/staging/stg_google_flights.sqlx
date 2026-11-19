@@ -7,7 +7,7 @@ config {
 WITH base_records AS (
   SELECT
     -- Hive partition column from GCS path (dt=YYYY-MM-DD)
-    CAST(dt AS DATE) AS scraped_at_date,
+    dt AS scraped_at_date,
 
     -- Search configuration identifier from terraform.tfvars
     COALESCE(_query_meta.search_name, 'default') AS search_name,
@@ -29,6 +29,7 @@ WITH base_records AS (
 
     -- Price & Metadata
     CAST(price AS NUMERIC) AS price,
+    CAST(_query_meta.target_price AS NUMERIC) AS target_price,
     COALESCE(_query_meta.seat, 'economy') AS seat_class,
     COALESCE(_query_meta.currency, 'EUR') AS currency,
     COALESCE(_query_meta.trip, 'round-trip') AS trip_type,
@@ -37,10 +38,6 @@ WITH base_records AS (
     ${ref("ext_google_flights")}
   WHERE
     COALESCE(type, '') != 'seed'
-    AND (
-      '${dataform.projectConfig.vars.search_name}' = ''
-      OR COALESCE(_query_meta.search_name, 'default') = '${dataform.projectConfig.vars.search_name}'
-    )
 ),
 
 return_by_airline AS (
@@ -106,6 +103,7 @@ enriched_source AS (
       ELSE CAST(NULL AS INT64)
     END AS return_duration_mins,
     b.price,
+    b.target_price,
     b.seat_class,
     b.currency,
     b.trip_type,
@@ -132,8 +130,7 @@ enriched_source AS (
     AND b.destination_airport = rf.return_origin_airport
     AND b.origin_airport = rf.return_destination_airport
   WHERE
-    '${dataform.projectConfig.vars.trip_type}' = ''
-    OR b.trip_type = '${dataform.projectConfig.vars.trip_type}'
+    b.trip_type = 'round-trip'
 )
 
 SELECT

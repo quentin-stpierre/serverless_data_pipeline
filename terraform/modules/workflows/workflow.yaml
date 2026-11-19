@@ -88,46 +88,22 @@ main:
             type: OAuth2
           body:
             gitCommitish: "main"
-            codeCompilationConfig:
-              vars:
-                search_name: $${search_name}
-                trip_type: $${trip_type}
-                target_price: '$${if(target_price != null, string(target_price), "")}'
         result: compilation_result
 
-    - invoke_dataform:
-        call: http.post
-        args:
-          url: https://dataform.googleapis.com/v1beta1/projects/${project_id}/locations/${region}/repositories/${dataform_repo_name}/workflowInvocations
-          auth:
-            type: OAuth2
-          body:
-            compilationResult: $${compilation_result.body.name}
-            invocationConfig:
-              serviceAccount: "${dataform_runner_sa_email}"
-              fullyRefreshIncrementalTablesEnabled: $${full_refresh}
-        result: invocation_result
-
-    - poll_dataform_status:
-        call: http.get
-        args:
-          url: '$${"https://dataform.googleapis.com/v1beta1/" + invocation_result.body.name}'
-          auth:
-            type: OAuth2
-        result: invocation_status
-
-    - check_dataform_status:
-        switch:
-          - condition: '$${invocation_status.body.state == "RUNNING"}'
-            steps:
-              - wait_before_poll:
-                  call: sys.sleep
-                  args:
-                    seconds: 5
-              - retry_poll:
-                  next: poll_dataform_status
-          - condition: '$${invocation_status.body.state != "SUCCEEDED"}'
-            raise: '$${"Dataform workflow invocation failed with state: " + invocation_status.body.state}'
+    - run_dataform:
+        try:
+          call: execute_dataform_invocation
+          args:
+            compilation_result_name: $${compilation_result.body.name}
+            full_refresh: $${full_refresh}
+          result: invocation_result
+        retry:
+          predicate: $${should_retry_dataform}
+          max_retries: 3
+          backoff:
+            initial_delay: 10
+            max_delay: 60
+            multiplier: 2
 
     - query_price_alerts:
         call: http.post
@@ -206,6 +182,71 @@ should_retry_scrape:
           - error_tags: '$${default(map.get(e, "tags"), [])}'
     - check_retryable:
         switch:
+          - condition: '$${error_code in [429, 500, 502, 503, 504]}'
+            return: true
+          - condition: '$${"ConnectionError" in error_tags or "TimeoutError" in error_tags}'
+            return: true
+    - do_not_retry:
+        return: false
+
+execute_dataform_invocation:
+  params: [compilation_result_name, full_refresh]
+  steps:
+    - invoke_dataform:
+        call: http.post
+        args:
+          url: https://dataform.googleapis.com/v1beta1/projects/${project_id}/locations/${region}/repositories/${dataform_repo_name}/workflowInvocations
+          auth:
+            type: OAuth2
+          body:
+            compilationResult: $${compilation_result_name}
+            invocationConfig:
+              serviceAccount: "${dataform_runner_sa_email}"
+              fullyRefreshIncrementalTablesEnabled: $${full_refresh}
+        result: invocation_result
+
+    - poll_dataform_status:
+        call: http.get
+        args:
+          url: '$${"https://dataform.googleapis.com/v1beta1/" + invocation_result.body.name}'
+          auth:
+            type: OAuth2
+        result: invocation_status
+
+    - check_dataform_status:
+        switch:
+          - condition: '$${invocation_status.body.state == "RUNNING"}'
+            steps:
+              - wait_before_poll:
+                  call: sys.sleep
+                  args:
+                    seconds: 5
+              - retry_poll:
+                  next: poll_dataform_status
+          - condition: '$${invocation_status.body.state != "SUCCEEDED"}'
+            steps:
+              - build_dataform_error:
+                  assign:
+                    - dataform_error:
+                        message: '$${"Dataform workflow invocation failed with state: " + invocation_status.body.state}'
+                        tags: ["DataformInvocationError"]
+              - raise_dataform_error:
+                  raise: $${dataform_error}
+
+    - return_invocation:
+        return: $${invocation_result}
+
+should_retry_dataform:
+  params: [e]
+  steps:
+    - extract_error_fields:
+        assign:
+          - error_code: '$${default(map.get(e, "code"), 0)}'
+          - error_tags: '$${default(map.get(e, "tags"), [])}'
+    - check_retryable:
+        switch:
+          - condition: '$${"DataformInvocationError" in error_tags}'
+            return: true
           - condition: '$${error_code in [429, 500, 502, 503, 504]}'
             return: true
           - condition: '$${"ConnectionError" in error_tags or "TimeoutError" in error_tags}'

@@ -483,7 +483,7 @@ def test_upload_raw_data_to_gcs_uploads_utc_jsonl_and_skips_empty(
     uri = upload_raw_data_to_gcs("raw-flights-bucket", records, source="google_flights")
     assert uri is not None
     assert re.fullmatch(
-        rf"gs://raw-flights-bucket/raw/source=google_flights/dt={expected_dt}/[0-9a-f-]{{36}}\.jsonl",
+        rf"gs://raw-flights-bucket/raw/source=google_flights/dt={expected_dt}/default_[0-9a-f-]{{36}}\.jsonl",
         uri,
     )
     mock_client.bucket.assert_called_once_with("raw-flights-bucket")
@@ -526,7 +526,50 @@ def test_validate_request_params_none_safe_defaults() -> None:
         "currency": "EUR",
         "adults": 1,
         "max_stops": 0,
+        "target_price": None,
     }
+
+
+def test_validate_request_params_target_price_and_invalid_values() -> None:
+    assert validate_request_params({"target_price": 600})["target_price"] == 600.0
+    assert validate_request_params({"target_price": 599.95})["target_price"] == 599.95
+    assert validate_request_params({"target_price": 0})["target_price"] == 0.0
+
+    for bad_target in [-1, -0.01, True, False, "600", float("nan"), float("inf")]:
+        with pytest.raises(fetch_flights_main.ValidationError):
+            validate_request_params({"target_price": bad_target})
+
+
+def test_upload_raw_data_to_gcs_prefixes_and_sanitizes_search_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_storage_client_cls = MagicMock()
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    mock_storage_client_cls.return_value = mock_client
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.blob.return_value = mock_blob
+    monkeypatch.setattr(fast_flights_scraper.storage, "Client", mock_storage_client_cls)
+
+    expected_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    records = [{"price": 450}]
+
+    uri_canada = upload_raw_data_to_gcs("raw-flights-bucket", records, search_name="canada")
+    assert uri_canada is not None
+    assert re.fullmatch(
+        rf"gs://raw-flights-bucket/raw/source=google_flights/dt={expected_dt}/canada_[0-9a-f-]{{36}}\.jsonl",
+        uri_canada,
+    )
+
+    uri_sanitized = upload_raw_data_to_gcs(
+        "raw-flights-bucket", records, search_name="europe/summer 2027!!"
+    )
+    assert uri_sanitized is not None
+    assert re.fullmatch(
+        rf"gs://raw-flights-bucket/raw/source=google_flights/dt={expected_dt}/europe_summer_2027_[0-9a-f-]{{36}}\.jsonl",
+        uri_sanitized,
+    )
 
 
 @pytest.mark.parametrize(
@@ -635,7 +678,9 @@ def test_fetch_flights_end_to_end_success_returns_200_json(
     monkeypatch.setattr(
         fetch_flights_main,
         "upload_raw_data_to_gcs",
-        lambda bucket_name, data: f"gs://{bucket_name}/raw/source=google_flights/dt=2027-06-01/run.jsonl",
+        lambda bucket_name, data, search_name="default": (
+            f"gs://{bucket_name}/raw/source=google_flights/dt=2027-06-01/{search_name}_run.jsonl"
+        ),
     )
 
     req = FakeFlaskRequest(
@@ -658,7 +703,7 @@ def test_fetch_flights_end_to_end_success_returns_200_json(
     assert status_code == 200
     assert body["status"] == "success"
     assert body["records_count"] == 2
-    assert body["gcs_uri"] == "gs://test-raw-bucket/raw/source=google_flights/dt=2027-06-01/run.jsonl"
+    assert body["gcs_uri"] == "gs://test-raw-bucket/raw/source=google_flights/dt=2027-06-01/montreal_2027_run.jsonl"
     assert body["parameters"] == {
         "search_name": "montreal_2027",
         "origin": "BRU",
@@ -666,5 +711,6 @@ def test_fetch_flights_end_to_end_success_returns_200_json(
         "start_date": "2027-06-01",
         "trip_length": 24,
         "flexibility_window": 0,
+        "target_price": None,
     }
     assert body["scrape_stats"] == fake_stats.to_dict()

@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 from typing import Any
 import uuid
@@ -315,6 +316,7 @@ def fetch_flights_for_date_pairs(
     adults: int = 1,
     max_stops: int = 0,
     search_name: str = "default",
+    target_price: float | None = None,
     *,
     integration: FetchIntegration | None = None,
     request_delay_range: tuple[float, float] = (0.35, 0.75),
@@ -361,6 +363,7 @@ def fetch_flights_for_date_pairs(
                         "trip": "round-trip",
                         "currency": currency,
                         "seat": seat,
+                        "target_price": target_price,
                     }
                     raw_results.append(data)
         except FlightsNotFound:
@@ -445,6 +448,7 @@ def fetch_flights_for_date_pairs(
                     "trip": "one-way",
                     "currency": currency,
                     "seat": seat,
+                    "target_price": target_price,
                 }
                 raw_results.append(record)
 
@@ -464,8 +468,10 @@ def upload_raw_data_to_gcs(
     bucket_name: str,
     data: list[dict[str, Any]],
     source: str = "google_flights",
+    search_name: str = "default",
 ) -> str | None:
     """Dumps raw flight records as a JSONL file to the specified Google Cloud Storage bucket."""
+    safe_search_name = re.sub(r"[^A-Za-z0-9_-]+", "_", search_name or "").strip("_") or "default"
     if not data:
         logger.info(
             "No flight data to upload to GCS",
@@ -474,6 +480,7 @@ def upload_raw_data_to_gcs(
                     "event": "gcs_upload_skipped",
                     "bucket": bucket_name,
                     "source": source,
+                    "search_name": safe_search_name,
                     "records_count": 0,
                 }
             },
@@ -485,7 +492,7 @@ def upload_raw_data_to_gcs(
 
     scrape_id = str(uuid.uuid4())
     dt_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    blob_name = f"raw/source={source}/dt={dt_str}/{scrape_id}.jsonl"
+    blob_name = f"raw/source={source}/dt={dt_str}/{safe_search_name}_{scrape_id}.jsonl"
 
     blob = bucket.blob(blob_name)
     jsonl_content = "\n".join(json.dumps(record, default=str) for record in data)
@@ -500,6 +507,7 @@ def upload_raw_data_to_gcs(
                 "bucket": bucket_name,
                 "gcs_uri": gcs_uri,
                 "source": source,
+                "search_name": safe_search_name,
                 "records_count": len(data),
             }
         },

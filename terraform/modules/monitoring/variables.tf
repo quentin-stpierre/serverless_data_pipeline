@@ -12,3 +12,9 @@ variable "workflow_name" {
   description = "The name of the Cloud Workflow to monitor"
   type        = string
 }
+
+variable "flight_searches" {
+  description = "Map of flight search configurations to create per-search alert policies"
+  type        = map(any)
+  default     = {}
+}

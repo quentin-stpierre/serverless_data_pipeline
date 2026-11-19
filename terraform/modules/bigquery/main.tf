@@ -242,7 +242,8 @@ resource "google_bigquery_table" "table" {
       { "name": "destination", "type": "STRING", "mode": "NULLABLE" },
       { "name": "trip", "type": "STRING", "mode": "NULLABLE" },
       { "name": "currency", "type": "STRING", "mode": "NULLABLE" },
-      { "name": "seat", "type": "STRING", "mode": "NULLABLE" }
+      { "name": "seat", "type": "STRING", "mode": "NULLABLE" },
+      { "name": "target_price", "type": "FLOAT", "mode": "NULLABLE" }
     ]
   },
   {

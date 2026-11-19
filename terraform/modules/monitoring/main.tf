@@ -35,16 +35,18 @@ resource "google_monitoring_alert_policy" "workflow_failure_policy" {
 }
 
 resource "google_monitoring_alert_policy" "flight_price_low_policy" {
+  for_each = var.flight_searches
+
   project      = var.project_id
-  display_name = "Flight Low Price Alert - ${var.workflow_name}"
+  display_name = "Flight Low Price Alert (${each.key}) - ${var.workflow_name}"
   combiner     = "OR"
   enabled      = true
 
   conditions {
-    display_name = "Flight price reached a historical low or target threshold"
+    display_name = "Flight price reached a historical low or target threshold for ${each.key}"
 
     condition_matched_log {
-      filter = "resource.type = \"workflows.googleapis.com/Workflow\" AND resource.labels.workflow_id = \"${var.workflow_name}\" AND jsonPayload.event_type = \"FLIGHT_PRICE_LOW_ALERT\""
+      filter = "resource.type = \"workflows.googleapis.com/Workflow\" AND resource.labels.workflow_id = \"${var.workflow_name}\" AND jsonPayload.event_type = \"FLIGHT_PRICE_LOW_ALERT\" AND jsonPayload.search_name = \"${each.key}\""
 
       label_extractors = {
         search_name            = "EXTRACT(jsonPayload.search_name)"
