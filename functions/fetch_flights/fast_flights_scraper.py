@@ -24,7 +24,7 @@ from selectolax.lexbor import LexborHTMLParser
 logger = logging.getLogger(__name__)
 
 GOOGLE_FLIGHTS_SEARCH_URL = "https://www.google.com/travel/flights/search"
-SOCS_CONSENT_COOKIE = "SOCS=CAESEwgDEgk2ODEwNTc2NjIaAmVuIAEaBgiA_LyaBg"
+SOCS_CONSENT_COOKIE_ENV_VAR = "SOCS_CONSENT_COOKIE"
 _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
@@ -111,12 +111,24 @@ class ConsentAwareFetchIntegration(FetchIntegration):
         self,
         *,
         client: Client | None = None,
+        consent_cookie: str | None = None,
         request_delay_range: tuple[float, float] = (0.35, 0.75),
         max_retries: int = 2,
         backoff_base_seconds: float = 1.0,
         timeout: int = 15,
         sleep_fn: Callable[[float], None] = time.sleep,
     ) -> None:
+        raw_cookie = (
+            consent_cookie
+            if consent_cookie is not None
+            else os.environ.get(SOCS_CONSENT_COOKIE_ENV_VAR, "")
+        )
+        resolved_cookie = raw_cookie.strip()
+        if not resolved_cookie:
+            raise ScraperError(
+                f"{SOCS_CONSENT_COOKIE_ENV_VAR} environment variable is not set"
+            )
+        self._consent_cookie = resolved_cookie
         self._client = client or Client(
             impersonate="chrome_145",
             impersonate_os="macos",
@@ -155,7 +167,7 @@ class ConsentAwareFetchIntegration(FetchIntegration):
                 resp = self._client.get(
                     GOOGLE_FLIGHTS_SEARCH_URL,
                     params=params,
-                    headers={"cookie": SOCS_CONSENT_COOKIE},
+                    headers={"cookie": self._consent_cookie},
                 )
             except Exception as exc:
                 is_last = attempt >= self._max_retries

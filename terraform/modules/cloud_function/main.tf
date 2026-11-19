@@ -38,6 +38,22 @@ resource "google_project_iam_member" "function_logging" {
   member  = "serviceAccount:${google_service_account.function_sa.email}"
 }
 
+resource "google_secret_manager_secret" "socs_consent_cookie" {
+  project   = var.project_id
+  secret_id = var.socs_cookie_secret_id
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "function_socs_cookie_accessor" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.socs_consent_cookie.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.function_sa.email}"
+}
+
 resource "google_cloudfunctions2_function" "fetch_flights" {
   name        = var.cloud_function_name
   location    = var.region
@@ -65,9 +81,17 @@ resource "google_cloudfunctions2_function" "fetch_flights" {
       GCP_PROJECT     = var.project_id
       RAW_DATA_BUCKET = var.raw_data_bucket_name
     }
+
+    secret_environment_variables {
+      key        = "SOCS_CONSENT_COOKIE"
+      project_id = var.project_id
+      secret     = google_secret_manager_secret.socs_consent_cookie.secret_id
+      version    = "latest"
+    }
   }
 
   depends_on = [
     google_project_iam_member.function_logging,
+    google_secret_manager_secret_iam_member.function_socs_cookie_accessor,
   ]
 }

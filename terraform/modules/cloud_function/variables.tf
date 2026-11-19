@@ -22,3 +22,9 @@ variable "raw_data_bucket_name" {
   description = "The name of the GCS bucket to store raw flight data"
   type        = string
 }
+
+variable "socs_cookie_secret_id" {
+  description = "The Secret Manager secret ID for the Google Flights SOCS consent cookie"
+  type        = string
+  default     = "socs-consent-cookie"
+}
