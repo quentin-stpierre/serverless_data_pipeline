@@ -25,6 +25,7 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 _VALID_SEATS = frozenset({"economy", "premium-economy", "business", "first"})
+_VALID_TRIP_TYPES = frozenset({"round-trip", "one-way"})
 _IATA_CODE_RE = re.compile(r"^[A-Z]{3}$")
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -108,12 +109,26 @@ def validate_request_params(request_json: Any) -> dict[str, Any]:
     except ValueError as exc:
         raise ValidationError(f"Parameter 'start_date' is not a valid calendar date: {start_date}") from exc
 
-    trip_length = _parse_bounded_int(
-        "trip_length",
-        _coalesce(request_json, "trip_length", 24),
-        min_value=1,
-        max_value=365,
-    )
+    raw_trip_type = request_json.get("trip_type")
+    if raw_trip_type is None or (isinstance(raw_trip_type, str) and not raw_trip_type.strip()):
+        trip_type = "round-trip"
+    elif isinstance(raw_trip_type, str) and raw_trip_type.strip().lower() in _VALID_TRIP_TYPES:
+        trip_type = raw_trip_type.strip().lower()
+    else:
+        raise ValidationError(
+            f"Parameter 'trip_type' must be one of {sorted(_VALID_TRIP_TYPES)}"
+        )
+
+    raw_trip_length = request_json.get("trip_length")
+    if trip_type == "one-way" and raw_trip_length is None:
+        trip_length = None
+    else:
+        trip_length = _parse_bounded_int(
+            "trip_length",
+            _coalesce(request_json, "trip_length", 24),
+            min_value=1,
+            max_value=365,
+        )
     flexibility_window = _parse_bounded_int(
         "flexibility_window",
         _coalesce(request_json, "flexibility_window", 1),
@@ -171,6 +186,7 @@ def validate_request_params(request_json: Any) -> dict[str, Any]:
         "currency": currency,
         "adults": adults,
         "max_stops": max_stops,
+        "trip_type": trip_type,
         "target_price": target_price,
     }
 
@@ -217,6 +233,7 @@ def fetch_flights(request: Any):
                 start_date=params["start_date"],
                 trip_length=params["trip_length"],
                 flexibility_window=params["flexibility_window"],
+                trip_type=params["trip_type"],
             )
 
             logger.info(
@@ -230,6 +247,7 @@ def fetch_flights(request: Any):
                         "start_date": params["start_date"],
                         "trip_length": params["trip_length"],
                         "flexibility_window": params["flexibility_window"],
+                        "trip_type": params["trip_type"],
                         "date_pairs_count": len(date_pairs),
                         "seat": params["seat"],
                         "currency": params["currency"],
@@ -250,6 +268,7 @@ def fetch_flights(request: Any):
                 max_stops=params["max_stops"],
                 search_name=params["search_name"],
                 target_price=params["target_price"],
+                trip_type=params["trip_type"],
             )
 
             gcs_uri = upload_raw_data_to_gcs(
@@ -288,6 +307,7 @@ def fetch_flights(request: Any):
                     "start_date": params["start_date"],
                     "trip_length": params["trip_length"],
                     "flexibility_window": params["flexibility_window"],
+                    "trip_type": params["trip_type"],
                     "target_price": params["target_price"],
                 },
                 "scrape_stats": scrape_stats,

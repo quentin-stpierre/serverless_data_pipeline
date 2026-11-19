@@ -274,16 +274,26 @@ class ConsentAwareFetchIntegration(FetchIntegration):
 
 
 def generate_flexible_date_pairs(
-    start_date: str, trip_length: int, flexibility_window: int = 0
-) -> list[tuple[str, str]]:
-    """Generates (outbound_date, return_date) pairs symmetrically around start_date and trip_length."""
+    start_date: str,
+    trip_length: int | None = 24,
+    flexibility_window: int = 0,
+    trip_type: str = "round-trip",
+) -> list[tuple[str, str | None]]:
+    """Generates (outbound_date, return_date) pairs, or (outbound_date, None) for one-way trips."""
     base_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-    pairs: list[tuple[str, str]] = []
+    pairs: list[tuple[str, str | None]] = []
 
+    if trip_type == "one-way":
+        for out_offset in range(-flexibility_window, flexibility_window + 1):
+            outbound_dt = base_date + timedelta(days=out_offset)
+            pairs.append((outbound_dt.strftime("%Y-%m-%d"), None))
+        return pairs
+
+    effective_length = 24 if trip_length is None else trip_length
     for out_offset in range(-flexibility_window, flexibility_window + 1):
         outbound_dt = base_date + timedelta(days=out_offset)
         for len_offset in range(-flexibility_window, flexibility_window + 1):
-            current_length = trip_length + len_offset
+            current_length = effective_length + len_offset
             if current_length < 1:
                 continue
             return_dt = outbound_dt + timedelta(days=current_length)
@@ -308,7 +318,7 @@ def _to_serializable(obj: Any) -> Any:
 
 
 def fetch_flights_for_date_pairs(
-    date_pairs: list[tuple[str, str]],
+    date_pairs: list[tuple[str, str | None]],
     origin: str = "BRU",
     destination: str = "YUL",
     seat: str = "economy",
@@ -317,6 +327,7 @@ def fetch_flights_for_date_pairs(
     max_stops: int = 0,
     search_name: str = "default",
     target_price: float | None = None,
+    trip_type: str = "round-trip",
     *,
     integration: FetchIntegration | None = None,
     request_delay_range: tuple[float, float] = (0.35, 0.75),
@@ -333,6 +344,60 @@ def fetch_flights_for_date_pairs(
     return_cache: dict[str, tuple[str, list[dict[str, Any]]]] = {}
 
     for outbound_date, return_date in date_pairs:
+        if trip_type == "one-way" or return_date is None:
+            stats.total_logical_queries += 1
+            ow_query = create_query(
+                flights=[
+                    FlightQuery(date=outbound_date, from_airport=origin, to_airport=destination, max_stops=max_stops),
+                ],
+                trip="one-way",
+                seat=seat,
+                currency=currency,
+                max_stops=max_stops,
+                passengers=Passengers(adults=adults),
+            )
+            try:
+                ow_flights = get_flights(ow_query, integration=active_integration)
+                if not ow_flights:
+                    stats.no_flights_queries += 1
+                else:
+                    stats.succeeded_queries += 1
+                    for flight in ow_flights:
+                        data = _to_serializable(flight)
+                        data["_query_meta"] = {
+                            "search_name": search_name,
+                            "outbound_date": outbound_date,
+                            "return_date": None,
+                            "origin": origin,
+                            "destination": destination,
+                            "trip": "one-way",
+                            "currency": currency,
+                            "seat": seat,
+                            "target_price": target_price,
+                        }
+                        raw_results.append(data)
+            except FlightsNotFound:
+                stats.no_flights_queries += 1
+            except (UpstreamScrapeError, AttributeError, TypeError, IndexError, ValueError, KeyError) as exc:
+                stats.failed_queries += 1
+                logger.warning(
+                    "One-way outbound flight query failed; continuing remaining dates",
+                    extra={
+                        "json_fields": {
+                            "event": "flight_query_failed",
+                            "search_name": search_name,
+                            "origin": origin,
+                            "destination": destination,
+                            "outbound_date": outbound_date,
+                            "return_date": None,
+                            "trip": "one-way",
+                            "error_type": type(exc).__name__,
+                            "error": str(exc),
+                        }
+                    },
+                )
+            continue
+
         # 1. Fetch round-trip options (raw)
         stats.total_logical_queries += 1
         rt_query = create_query(

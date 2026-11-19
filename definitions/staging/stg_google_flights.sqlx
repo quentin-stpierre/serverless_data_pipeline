@@ -131,6 +131,7 @@ enriched_source AS (
     AND b.origin_airport = rf.return_destination_airport
   WHERE
     b.trip_type = 'round-trip'
+    OR (b.trip_type = 'one-way' AND b.return_date IS NULL)
 )
 
 SELECT

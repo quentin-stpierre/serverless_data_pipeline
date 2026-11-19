@@ -21,6 +21,17 @@ flight_searches = {
     currency           = "EUR"
     seat               = "economy"
   }
+  mexico = {
+    schedule           = "0 8 * * *"
+    origin             = "BRU"
+    destination        = "MEX"
+    start_date         = "2027-05-01"
+    flexibility_window = 2
+    trip_type          = "one-way"
+    target_price       = 800
+    currency           = "EUR"
+    seat               = "economy"
+  }
 }
 
 # Workflows

@@ -25,7 +25,7 @@ variable "flight_searches" {
     origin             = string
     destination        = string
     start_date         = string
-    trip_length        = number
+    trip_length        = optional(number, null)
     flexibility_window = number
     trip_type          = optional(string, "")
     target_price       = optional(number, null)

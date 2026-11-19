@@ -526,8 +526,71 @@ def test_validate_request_params_none_safe_defaults() -> None:
         "currency": "EUR",
         "adults": 1,
         "max_stops": 0,
+        "trip_type": "round-trip",
         "target_price": None,
     }
+
+
+def test_validate_request_params_one_way_allows_missing_trip_length() -> None:
+    normalized = validate_request_params(
+        {
+            "search_name": "mexico",
+            "origin": "BRU",
+            "destination": "MEX",
+            "start_date": "2027-05-01",
+            "trip_length": None,
+            "flexibility_window": 2,
+            "trip_type": "one-way",
+            "target_price": 400,
+        }
+    )
+    assert normalized["trip_type"] == "one-way"
+    assert normalized["trip_length"] is None
+    assert normalized["target_price"] == 400.0
+
+    with pytest.raises(fetch_flights_main.ValidationError):
+        validate_request_params({"trip_type": "multi-city"})
+
+
+def test_one_way_date_pairs_and_scraper_skip_return_leg_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pairs = fast_flights_scraper.generate_flexible_date_pairs(
+        start_date="2027-05-01",
+        trip_length=None,
+        flexibility_window=2,
+        trip_type="one-way",
+    )
+    assert pairs == [
+        ("2027-04-29", None),
+        ("2027-04-30", None),
+        ("2027-05-01", None),
+        ("2027-05-02", None),
+        ("2027-05-03", None),
+    ]
+
+    recorded_queries: list[Any] = []
+
+    def fake_get_flights(query: Any, integration: Any = None) -> list[dict[str, Any]]:
+        recorded_queries.append(query)
+        return [{"price": 380, "airlines": ["Aeromexico"]}]
+
+    monkeypatch.setattr(fast_flights_scraper, "get_flights", fake_get_flights)
+
+    results = fast_flights_scraper.fetch_flights_for_date_pairs(
+        date_pairs=pairs,
+        origin="BRU",
+        destination="MEX",
+        search_name="mexico",
+        target_price=400.0,
+        trip_type="one-way",
+        integration=MagicMock(),
+    )
+    assert len(recorded_queries) == 5
+    assert len(results) == 5
+    assert all(r["_query_meta"]["trip"] == "one-way" for r in results)
+    assert all(r["_query_meta"]["return_date"] is None for r in results)
+    assert all(r["_query_meta"]["target_price"] == 400.0 for r in results)
 
 
 def test_validate_request_params_target_price_and_invalid_values() -> None:
@@ -711,6 +774,7 @@ def test_fetch_flights_end_to_end_success_returns_200_json(
         "start_date": "2027-06-01",
         "trip_length": 24,
         "flexibility_window": 0,
+        "trip_type": "round-trip",
         "target_price": None,
     }
     assert body["scrape_stats"] == fake_stats.to_dict()
