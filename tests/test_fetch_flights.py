@@ -24,9 +24,10 @@ import fast_flights_scraper  # noqa: E402
 from fast_flights_scraper import (  # noqa: E402
     AllQueriesFailedError,
     ConsentAwareFetchIntegration,
-    SOCS_CONSENT_COOKIE,
+    SOCS_CONSENT_COOKIE_ENV_VAR,
     ScrapeResultList,
     ScrapeStats,
+    ScraperError,
     UpstreamScrapeError,
     fetch_flights_for_date_pairs,
     generate_flexible_date_pairs,
@@ -236,7 +237,23 @@ def test_generate_flexible_date_pairs_window_2_counts() -> None:
     assert pairs[-1] == ("2027-06-03", "2027-06-29")
 
 
-def test_consent_aware_fetch_integration_success() -> None:
+@pytest.fixture(autouse=True)
+def _default_socs_cookie_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(SOCS_CONSENT_COOKIE_ENV_VAR, "SOCS=test-consent-cookie")
+
+
+def test_consent_aware_fetch_integration_requires_cookie_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(SOCS_CONSENT_COOKIE_ENV_VAR, raising=False)
+    with pytest.raises(ScraperError, match="SOCS_CONSENT_COOKIE"):
+        ConsentAwareFetchIntegration(client=MagicMock())
+
+
+def test_consent_aware_fetch_integration_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(SOCS_CONSENT_COOKIE_ENV_VAR, "SOCS=secret-manager-cookie")
     mock_client = MagicMock()
     mock_client.get.return_value = FakeHTTPResponse(status_code=200, text=VALID_FLIGHTS_HTML)
     sleeps: list[float] = []
@@ -255,7 +272,7 @@ def test_consent_aware_fetch_integration_success() -> None:
     assert sleeps == []
     mock_client.get.assert_called_once()
     _, kwargs = mock_client.get.call_args
-    assert kwargs["headers"] == {"cookie": SOCS_CONSENT_COOKIE}
+    assert kwargs["headers"] == {"cookie": "SOCS=secret-manager-cookie"}
 
 
 def test_consent_aware_fetch_integration_retries_503_and_missing_ds1() -> None:
