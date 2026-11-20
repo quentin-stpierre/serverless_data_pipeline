@@ -7,6 +7,24 @@ resource "google_monitoring_notification_channel" "email_channel" {
   }
 }
 
+locals {
+  extra_search_alert_emails = toset([
+    for _, s in var.flight_searches : s.alert_email
+    if try(s.alert_email, null) != null && try(s.alert_email, null) != "" && try(s.alert_email, null) != var.alert_email_address
+  ])
+}
+
+resource "google_monitoring_notification_channel" "search_email_channels" {
+  for_each = local.extra_search_alert_emails
+
+  project      = var.project_id
+  display_name = "Flight Alert Notification (${each.key})"
+  type         = "email"
+  labels = {
+    email_address = each.key
+  }
+}
+
 resource "google_monitoring_alert_policy" "workflow_failure_policy" {
   project      = var.project_id
   display_name = "Workflow Failure Alert Policy - ${var.workflow_name}"
@@ -95,6 +113,8 @@ resource "google_monitoring_alert_policy" "flight_price_low_policy" {
   }
 
   notification_channels = [
-    google_monitoring_notification_channel.email_channel.name
+    try(each.value.alert_email, null) != null && try(each.value.alert_email, null) != "" && try(each.value.alert_email, null) != var.alert_email_address
+    ? google_monitoring_notification_channel.search_email_channels[each.value.alert_email].name
+    : google_monitoring_notification_channel.email_channel.name
   ]
 }

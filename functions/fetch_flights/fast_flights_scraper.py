@@ -324,7 +324,7 @@ def fetch_flights_for_date_pairs(
     seat: str = "economy",
     currency: str = "EUR",
     adults: int = 1,
-    max_stops: int = 0,
+    max_stops: int | None = None,
     search_name: str = "default",
     target_price: float | None = None,
     trip_type: str = "round-trip",

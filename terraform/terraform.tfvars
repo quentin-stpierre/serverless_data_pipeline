@@ -18,8 +18,10 @@ flight_searches = {
     flexibility_window = 2
     trip_type          = "round-trip"
     target_price       = 600
+    alert_email        = "quentin.st-pierre@devoteam.com"
     currency           = "EUR"
     seat               = "economy"
+    max_stops          = 0
   }
   mexico = {
     schedule           = "0 8 * * *"
@@ -29,6 +31,7 @@ flight_searches = {
     flexibility_window = 2
     trip_type          = "one-way"
     target_price       = 800
+    alert_email        = "quentin.st-pierre@devoteam.com"
     currency           = "EUR"
     seat               = "economy"
   }

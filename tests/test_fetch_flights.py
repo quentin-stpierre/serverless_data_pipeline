@@ -525,10 +525,17 @@ def test_validate_request_params_none_safe_defaults() -> None:
         "seat": "economy",
         "currency": "EUR",
         "adults": 1,
-        "max_stops": 0,
+        "max_stops": None,
         "trip_type": "round-trip",
         "target_price": None,
     }
+
+
+def test_validate_request_params_max_stops_modes() -> None:
+    assert validate_request_params({"max_stops": None})["max_stops"] is None
+    assert validate_request_params({"max_stops": "any_number_of_stops"})["max_stops"] is None
+    assert validate_request_params({"max_stops": 0})["max_stops"] == 0
+    assert validate_request_params({"max_stops": 2})["max_stops"] == 2
 
 
 def test_validate_request_params_one_way_allows_missing_trip_length() -> None:

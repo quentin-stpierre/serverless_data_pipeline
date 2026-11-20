@@ -141,12 +141,19 @@ def validate_request_params(request_json: Any) -> dict[str, Any]:
         min_value=1,
         max_value=9,
     )
-    max_stops = _parse_bounded_int(
-        "max_stops",
-        _coalesce(request_json, "max_stops", 0),
-        min_value=0,
-        max_value=2,
-    )
+    raw_max_stops = request_json.get("max_stops")
+    if raw_max_stops is None or (
+        isinstance(raw_max_stops, str)
+        and raw_max_stops.strip().lower() in {"", "any", "any_number_of_stops"}
+    ):
+        max_stops = None
+    else:
+        max_stops = _parse_bounded_int(
+            "max_stops",
+            raw_max_stops,
+            min_value=0,
+            max_value=2,
+        )
 
     raw_origin = _coalesce(request_json, "origin", "BRU")
     if not isinstance(raw_origin, str) or not _IATA_CODE_RE.fullmatch(raw_origin.strip().upper()):
