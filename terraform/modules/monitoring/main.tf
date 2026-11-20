@@ -7,6 +7,24 @@ resource "google_monitoring_notification_channel" "email_channel" {
   }
 }
 
+locals {
+  extra_search_alert_emails = toset([
+    for _, s in var.flight_searches : s.alert_email
+    if try(s.alert_email, null) != null && try(s.alert_email, null) != "" && try(s.alert_email, null) != var.alert_email_address
+  ])
+}
+
+resource "google_monitoring_notification_channel" "search_email_channels" {
+  for_each = local.extra_search_alert_emails
+
+  project      = var.project_id
+  display_name = "Flight Alert Notification (${each.key})"
+  type         = "email"
+  labels = {
+    email_address = each.key
+  }
+}
+
 resource "google_monitoring_alert_policy" "workflow_failure_policy" {
   project      = var.project_id
   display_name = "Workflow Failure Alert Policy - ${var.workflow_name}"
@@ -35,16 +53,18 @@ resource "google_monitoring_alert_policy" "workflow_failure_policy" {
 }
 
 resource "google_monitoring_alert_policy" "flight_price_low_policy" {
+  for_each = var.flight_searches
+
   project      = var.project_id
-  display_name = "Flight Low Price Alert - ${var.workflow_name}"
+  display_name = "Flight Low Price Alert (${each.key}) - ${var.workflow_name}"
   combiner     = "OR"
   enabled      = true
 
   conditions {
-    display_name = "Flight price reached a historical low or target threshold"
+    display_name = "Flight price reached a historical low or target threshold for ${each.key}"
 
     condition_matched_log {
-      filter = "resource.type = \"workflows.googleapis.com/Workflow\" AND resource.labels.workflow_id = \"${var.workflow_name}\" AND jsonPayload.event_type = \"FLIGHT_PRICE_LOW_ALERT\""
+      filter = "resource.type = \"workflows.googleapis.com/Workflow\" AND resource.labels.workflow_id = \"${var.workflow_name}\" AND jsonPayload.event_type = \"FLIGHT_PRICE_LOW_ALERT\" AND jsonPayload.search_name = \"${each.key}\""
 
       label_extractors = {
         search_name            = "EXTRACT(jsonPayload.search_name)"
@@ -93,6 +113,8 @@ resource "google_monitoring_alert_policy" "flight_price_low_policy" {
   }
 
   notification_channels = [
-    google_monitoring_notification_channel.email_channel.name
+    try(each.value.alert_email, null) != null && try(each.value.alert_email, null) != "" && try(each.value.alert_email, null) != var.alert_email_address
+    ? google_monitoring_notification_channel.search_email_channels[each.value.alert_email].name
+    : google_monitoring_notification_channel.email_channel.name
   ]
 }

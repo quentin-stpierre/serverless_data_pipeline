@@ -114,6 +114,7 @@ module "monitoring" {
   project_id          = google_project.project.project_id
   alert_email_address = var.alert_email_address
   workflow_name       = module.workflows.workflow_name
+  flight_searches     = var.flight_searches
 
   depends_on = [google_project_service.services, module.workflows]
 }

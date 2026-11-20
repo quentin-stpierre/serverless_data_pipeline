@@ -72,7 +72,7 @@ resource "google_cloudfunctions2_function" "fetch_flights" {
   }
 
   service_config {
-    max_instance_count    = 1
+    max_instance_count    = 5
     available_memory      = "512M"
     timeout_seconds       = 300
     service_account_email = google_service_account.function_sa.email

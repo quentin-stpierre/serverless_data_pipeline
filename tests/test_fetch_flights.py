@@ -483,7 +483,7 @@ def test_upload_raw_data_to_gcs_uploads_utc_jsonl_and_skips_empty(
     uri = upload_raw_data_to_gcs("raw-flights-bucket", records, source="google_flights")
     assert uri is not None
     assert re.fullmatch(
-        rf"gs://raw-flights-bucket/raw/source=google_flights/dt={expected_dt}/[0-9a-f-]{{36}}\.jsonl",
+        rf"gs://raw-flights-bucket/raw/source=google_flights/dt={expected_dt}/default_[0-9a-f-]{{36}}\.jsonl",
         uri,
     )
     mock_client.bucket.assert_called_once_with("raw-flights-bucket")
@@ -525,8 +525,121 @@ def test_validate_request_params_none_safe_defaults() -> None:
         "seat": "economy",
         "currency": "EUR",
         "adults": 1,
-        "max_stops": 0,
+        "max_stops": None,
+        "trip_type": "round-trip",
+        "target_price": None,
     }
+
+
+def test_validate_request_params_max_stops_modes() -> None:
+    assert validate_request_params({"max_stops": None})["max_stops"] is None
+    assert validate_request_params({"max_stops": "any_number_of_stops"})["max_stops"] is None
+    assert validate_request_params({"max_stops": 0})["max_stops"] == 0
+    assert validate_request_params({"max_stops": 2})["max_stops"] == 2
+
+
+def test_validate_request_params_one_way_allows_missing_trip_length() -> None:
+    normalized = validate_request_params(
+        {
+            "search_name": "mexico",
+            "origin": "BRU",
+            "destination": "MEX",
+            "start_date": "2027-05-01",
+            "trip_length": None,
+            "flexibility_window": 2,
+            "trip_type": "one-way",
+            "target_price": 400,
+        }
+    )
+    assert normalized["trip_type"] == "one-way"
+    assert normalized["trip_length"] is None
+    assert normalized["target_price"] == 400.0
+
+    with pytest.raises(fetch_flights_main.ValidationError):
+        validate_request_params({"trip_type": "multi-city"})
+
+
+def test_one_way_date_pairs_and_scraper_skip_return_leg_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pairs = fast_flights_scraper.generate_flexible_date_pairs(
+        start_date="2027-05-01",
+        trip_length=None,
+        flexibility_window=2,
+        trip_type="one-way",
+    )
+    assert pairs == [
+        ("2027-04-29", None),
+        ("2027-04-30", None),
+        ("2027-05-01", None),
+        ("2027-05-02", None),
+        ("2027-05-03", None),
+    ]
+
+    recorded_queries: list[Any] = []
+
+    def fake_get_flights(query: Any, integration: Any = None) -> list[dict[str, Any]]:
+        recorded_queries.append(query)
+        return [{"price": 380, "airlines": ["Aeromexico"]}]
+
+    monkeypatch.setattr(fast_flights_scraper, "get_flights", fake_get_flights)
+
+    results = fast_flights_scraper.fetch_flights_for_date_pairs(
+        date_pairs=pairs,
+        origin="BRU",
+        destination="MEX",
+        search_name="mexico",
+        target_price=400.0,
+        trip_type="one-way",
+        integration=MagicMock(),
+    )
+    assert len(recorded_queries) == 5
+    assert len(results) == 5
+    assert all(r["_query_meta"]["trip"] == "one-way" for r in results)
+    assert all(r["_query_meta"]["return_date"] is None for r in results)
+    assert all(r["_query_meta"]["target_price"] == 400.0 for r in results)
+
+
+def test_validate_request_params_target_price_and_invalid_values() -> None:
+    assert validate_request_params({"target_price": 600})["target_price"] == 600.0
+    assert validate_request_params({"target_price": 599.95})["target_price"] == 599.95
+    assert validate_request_params({"target_price": 0})["target_price"] == 0.0
+
+    for bad_target in [-1, -0.01, True, False, "600", float("nan"), float("inf")]:
+        with pytest.raises(fetch_flights_main.ValidationError):
+            validate_request_params({"target_price": bad_target})
+
+
+def test_upload_raw_data_to_gcs_prefixes_and_sanitizes_search_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_storage_client_cls = MagicMock()
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    mock_storage_client_cls.return_value = mock_client
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.blob.return_value = mock_blob
+    monkeypatch.setattr(fast_flights_scraper.storage, "Client", mock_storage_client_cls)
+
+    expected_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    records = [{"price": 450}]
+
+    uri_canada = upload_raw_data_to_gcs("raw-flights-bucket", records, search_name="canada")
+    assert uri_canada is not None
+    assert re.fullmatch(
+        rf"gs://raw-flights-bucket/raw/source=google_flights/dt={expected_dt}/canada_[0-9a-f-]{{36}}\.jsonl",
+        uri_canada,
+    )
+
+    uri_sanitized = upload_raw_data_to_gcs(
+        "raw-flights-bucket", records, search_name="europe/summer 2027!!"
+    )
+    assert uri_sanitized is not None
+    assert re.fullmatch(
+        rf"gs://raw-flights-bucket/raw/source=google_flights/dt={expected_dt}/europe_summer_2027_[0-9a-f-]{{36}}\.jsonl",
+        uri_sanitized,
+    )
 
 
 @pytest.mark.parametrize(
@@ -635,7 +748,9 @@ def test_fetch_flights_end_to_end_success_returns_200_json(
     monkeypatch.setattr(
         fetch_flights_main,
         "upload_raw_data_to_gcs",
-        lambda bucket_name, data: f"gs://{bucket_name}/raw/source=google_flights/dt=2027-06-01/run.jsonl",
+        lambda bucket_name, data, search_name="default": (
+            f"gs://{bucket_name}/raw/source=google_flights/dt=2027-06-01/{search_name}_run.jsonl"
+        ),
     )
 
     req = FakeFlaskRequest(
@@ -658,7 +773,7 @@ def test_fetch_flights_end_to_end_success_returns_200_json(
     assert status_code == 200
     assert body["status"] == "success"
     assert body["records_count"] == 2
-    assert body["gcs_uri"] == "gs://test-raw-bucket/raw/source=google_flights/dt=2027-06-01/run.jsonl"
+    assert body["gcs_uri"] == "gs://test-raw-bucket/raw/source=google_flights/dt=2027-06-01/montreal_2027_run.jsonl"
     assert body["parameters"] == {
         "search_name": "montreal_2027",
         "origin": "BRU",
@@ -666,5 +781,7 @@ def test_fetch_flights_end_to_end_success_returns_200_json(
         "start_date": "2027-06-01",
         "trip_length": 24,
         "flexibility_window": 0,
+        "trip_type": "round-trip",
+        "target_price": None,
     }
     assert body["scrape_stats"] == fake_stats.to_dict()

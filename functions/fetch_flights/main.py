@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import date
 import logging
+import math
 import os
 import re
 import time
@@ -24,6 +25,7 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 _VALID_SEATS = frozenset({"economy", "premium-economy", "business", "first"})
+_VALID_TRIP_TYPES = frozenset({"round-trip", "one-way"})
 _IATA_CODE_RE = re.compile(r"^[A-Z]{3}$")
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -69,6 +71,21 @@ def _parse_bounded_int(
     return parsed
 
 
+def _parse_target_price(raw_value: Any) -> float | None:
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+        raise ValidationError(
+            f"Parameter 'target_price' must be a non-negative number, got {type(raw_value).__name__}"
+        )
+    parsed = float(raw_value)
+    if not math.isfinite(parsed) or parsed < 0:
+        raise ValidationError(
+            f"Parameter 'target_price' must be a finite non-negative number, got {raw_value!r}"
+        )
+    return parsed
+
+
 def validate_request_params(request_json: Any) -> dict[str, Any]:
     """Validate and normalize incoming scraper request parameters (`None`-safe)."""
     if not isinstance(request_json, Mapping):
@@ -92,12 +109,26 @@ def validate_request_params(request_json: Any) -> dict[str, Any]:
     except ValueError as exc:
         raise ValidationError(f"Parameter 'start_date' is not a valid calendar date: {start_date}") from exc
 
-    trip_length = _parse_bounded_int(
-        "trip_length",
-        _coalesce(request_json, "trip_length", 24),
-        min_value=1,
-        max_value=365,
-    )
+    raw_trip_type = request_json.get("trip_type")
+    if raw_trip_type is None or (isinstance(raw_trip_type, str) and not raw_trip_type.strip()):
+        trip_type = "round-trip"
+    elif isinstance(raw_trip_type, str) and raw_trip_type.strip().lower() in _VALID_TRIP_TYPES:
+        trip_type = raw_trip_type.strip().lower()
+    else:
+        raise ValidationError(
+            f"Parameter 'trip_type' must be one of {sorted(_VALID_TRIP_TYPES)}"
+        )
+
+    raw_trip_length = request_json.get("trip_length")
+    if trip_type == "one-way" and raw_trip_length is None:
+        trip_length = None
+    else:
+        trip_length = _parse_bounded_int(
+            "trip_length",
+            _coalesce(request_json, "trip_length", 24),
+            min_value=1,
+            max_value=365,
+        )
     flexibility_window = _parse_bounded_int(
         "flexibility_window",
         _coalesce(request_json, "flexibility_window", 1),
@@ -110,12 +141,19 @@ def validate_request_params(request_json: Any) -> dict[str, Any]:
         min_value=1,
         max_value=9,
     )
-    max_stops = _parse_bounded_int(
-        "max_stops",
-        _coalesce(request_json, "max_stops", 0),
-        min_value=0,
-        max_value=2,
-    )
+    raw_max_stops = request_json.get("max_stops")
+    if raw_max_stops is None or (
+        isinstance(raw_max_stops, str)
+        and raw_max_stops.strip().lower() in {"", "any", "any_number_of_stops"}
+    ):
+        max_stops = None
+    else:
+        max_stops = _parse_bounded_int(
+            "max_stops",
+            raw_max_stops,
+            min_value=0,
+            max_value=2,
+        )
 
     raw_origin = _coalesce(request_json, "origin", "BRU")
     if not isinstance(raw_origin, str) or not _IATA_CODE_RE.fullmatch(raw_origin.strip().upper()):
@@ -142,6 +180,8 @@ def validate_request_params(request_json: Any) -> dict[str, Any]:
         raise ValidationError("Parameter 'currency' must be a 3-letter ISO currency code")
     currency = raw_currency.strip().upper()
 
+    target_price = _parse_target_price(request_json.get("target_price"))
+
     return {
         "search_name": search_name,
         "start_date": start_date,
@@ -153,6 +193,8 @@ def validate_request_params(request_json: Any) -> dict[str, Any]:
         "currency": currency,
         "adults": adults,
         "max_stops": max_stops,
+        "trip_type": trip_type,
+        "target_price": target_price,
     }
 
 
@@ -198,6 +240,7 @@ def fetch_flights(request: Any):
                 start_date=params["start_date"],
                 trip_length=params["trip_length"],
                 flexibility_window=params["flexibility_window"],
+                trip_type=params["trip_type"],
             )
 
             logger.info(
@@ -211,11 +254,13 @@ def fetch_flights(request: Any):
                         "start_date": params["start_date"],
                         "trip_length": params["trip_length"],
                         "flexibility_window": params["flexibility_window"],
+                        "trip_type": params["trip_type"],
                         "date_pairs_count": len(date_pairs),
                         "seat": params["seat"],
                         "currency": params["currency"],
                         "adults": params["adults"],
                         "max_stops": params["max_stops"],
+                        "target_price": params["target_price"],
                     }
                 },
             )
@@ -229,9 +274,15 @@ def fetch_flights(request: Any):
                 adults=params["adults"],
                 max_stops=params["max_stops"],
                 search_name=params["search_name"],
+                target_price=params["target_price"],
+                trip_type=params["trip_type"],
             )
 
-            gcs_uri = upload_raw_data_to_gcs(bucket_name=bucket_name, data=results)
+            gcs_uri = upload_raw_data_to_gcs(
+                bucket_name=bucket_name,
+                data=results,
+                search_name=params["search_name"],
+            )
             duration_ms = round((time.monotonic() - started_at) * 1000, 2)
             scrape_stats = results.stats.to_dict() if hasattr(results, "stats") else {}
 
@@ -263,6 +314,8 @@ def fetch_flights(request: Any):
                     "start_date": params["start_date"],
                     "trip_length": params["trip_length"],
                     "flexibility_window": params["flexibility_window"],
+                    "trip_type": params["trip_type"],
+                    "target_price": params["target_price"],
                 },
                 "scrape_stats": scrape_stats,
             }, 200

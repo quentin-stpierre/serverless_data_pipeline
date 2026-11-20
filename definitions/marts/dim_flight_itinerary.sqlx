@@ -25,4 +25,4 @@ SELECT DISTINCT
 FROM
   ${ref("stg_google_flights")}
 
-${when(incremental(), `WHERE flight_itinerary_key NOT IN (SELECT flight_itinerary_key FROM ${self()})`)}
+${when(incremental(), `WHERE scraped_at_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY) AND flight_itinerary_key NOT IN (SELECT flight_itinerary_key FROM ${self()})`)}

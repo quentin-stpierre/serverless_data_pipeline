@@ -65,15 +65,25 @@ variable "flight_searches" {
     origin             = string
     destination        = string
     start_date         = string
-    trip_length        = number
+    trip_length        = optional(number, null)
     flexibility_window = number
     trip_type          = optional(string, "")
     target_price       = optional(number, null)
+    alert_email        = optional(string, null)
     currency           = optional(string, "EUR")
     seat               = optional(string, "economy")
     adults             = optional(number, 1)
-    max_stops          = optional(number, 0)
+    max_stops          = optional(number, null)
   }))
+
+  validation {
+    condition = alltrue([
+      for _, s in var.flight_searches :
+      contains(["", "round-trip", "one-way"], s.trip_type) &&
+      (s.trip_type == "one-way" || s.trip_length != null)
+    ])
+    error_message = "Each flight search must set trip_type to 'round-trip', 'one-way', or '' (default round-trip), and must specify trip_length unless trip_type is 'one-way'."
+  }
 }
 
 ### WORKFLOWS ###

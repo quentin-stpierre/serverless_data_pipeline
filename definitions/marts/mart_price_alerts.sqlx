@@ -19,7 +19,7 @@ WITH current_run AS (
     d.return_departure_time,
     d.return_duration_mins,
     f.trip_type,
-    SAFE_CAST('${dataform.projectConfig.vars.target_price}' AS NUMERIC) AS target_price
+    f.target_price
   FROM
     ${ref("fct_flight_prices")} f
   LEFT JOIN
@@ -27,10 +27,6 @@ WITH current_run AS (
     ON f.flight_itinerary_key = d.flight_itinerary_key
   WHERE
     f.scraped_at_date = CURRENT_DATE()
-    AND (
-      '${dataform.projectConfig.vars.search_name}' = ''
-      OR f.search_name = '${dataform.projectConfig.vars.search_name}'
-    )
   QUALIFY
     ROW_NUMBER() OVER (PARTITION BY f.search_name ORDER BY f.price ASC) = 1
 ),
