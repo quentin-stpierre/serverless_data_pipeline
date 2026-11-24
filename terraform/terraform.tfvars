@@ -30,7 +30,6 @@ flight_searches = {
     start_date         = "2027-05-01"
     flexibility_window = 2
     trip_type          = "one-way"
-    target_price       = 800
     alert_email        = "quentin.st-pierre@devoteam.com"
     currency           = "EUR"
     seat               = "economy"
