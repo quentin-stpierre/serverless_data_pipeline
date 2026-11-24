@@ -113,6 +113,7 @@ main:
             type: OAuth2
           body:
             useLegacySql: false
+            parameterMode: "NAMED"
             query: |
               SELECT
                 search_name,
@@ -132,8 +133,14 @@ main:
                 COALESCE(CAST(prev_min_price AS STRING), 'N/A') AS prev_min_price,
                 COALESCE(CAST(target_price AS STRING), 'N/A') AS target_price
               FROM `${project_id}.flight_marts.mart_price_alerts`
-              WHERE should_alert = TRUE AND search_name = '$${search_name}'
+              WHERE should_alert = TRUE AND search_name = @search_name
               LIMIT 1
+            queryParameters:
+              - name: "search_name"
+                parameterType:
+                  type: "STRING"
+                parameterValue:
+                  value: $${search_name}
         result: bq_result
 
     - emit_alert_if_needed:
