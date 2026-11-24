@@ -148,6 +148,7 @@ def generate_flexible_date_pairs(
     start_date: str, trip_length: int, flexibility_window: int = 0
 ) -> list[tuple[str, str]]:
 ```
+
 - Generates `(2 * flexibility_window + 1)^2` combinations of `(outbound_date, return_date)` around `start_date` and `trip_length`.
 
 ---
