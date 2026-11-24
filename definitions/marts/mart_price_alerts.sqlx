@@ -4,7 +4,17 @@ config {
   description: "Gold alert table: evaluates whether the latest scraped flight prices reached a new historical low or beat the target price threshold"
 }
 
-WITH current_run AS (
+WITH latest_scrape AS (
+  SELECT
+    search_name,
+    MAX(scraped_at_date) AS latest_scraped_at_date
+  FROM
+    ${ref("fct_flight_prices")}
+  GROUP BY
+    search_name
+),
+
+current_run AS (
   SELECT
     f.search_name,
     f.price AS current_price,
@@ -22,25 +32,29 @@ WITH current_run AS (
     f.target_price
   FROM
     ${ref("fct_flight_prices")} f
+  INNER JOIN
+    latest_scrape ls
+    ON f.search_name = ls.search_name
+    AND f.scraped_at_date = ls.latest_scraped_at_date
   LEFT JOIN
     ${ref("dim_flight_itinerary")} d
     ON f.flight_itinerary_key = d.flight_itinerary_key
-  WHERE
-    f.scraped_at_date = CURRENT_DATE()
   QUALIFY
     ROW_NUMBER() OVER (PARTITION BY f.search_name ORDER BY f.price ASC) = 1
 ),
 
 historical AS (
   SELECT
-    search_name,
-    MIN(price) AS prev_min_price
+    f.search_name,
+    MIN(f.price) AS prev_min_price
   FROM
-    ${ref("fct_flight_prices")}
-  WHERE
-    scraped_at_date < CURRENT_DATE()
+    ${ref("fct_flight_prices")} f
+  INNER JOIN
+    latest_scrape ls
+    ON f.search_name = ls.search_name
+    AND f.scraped_at_date < ls.latest_scraped_at_date
   GROUP BY
-    search_name
+    f.search_name
 ),
 
 evaluated AS (

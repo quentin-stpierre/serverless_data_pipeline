@@ -140,9 +140,9 @@ SELECT
     search_name, '|',
     origin_airport, '|',
     destination_airport, '|',
-    CAST(outbound_date AS STRING), '|',
+    COALESCE(CAST(outbound_date AS STRING), ''), '|',
     COALESCE(CAST(return_date AS STRING), ''), '|',
-    airlines, '|',
+    COALESCE(airlines, 'UNKNOWN'), '|',
     trip_type, '|',
     COALESCE(CAST(outbound_departure_time AS STRING), ''), '|',
     COALESCE(CAST(return_departure_time AS STRING), '')
